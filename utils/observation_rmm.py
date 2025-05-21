@@ -6,9 +6,12 @@ from eof import detrend_anomalies, latitude_band_average
 from rmm_io import save_rmm_indices
 
 def main():
-        
+
+    #reference period to use   
     reference_start = '1979-09-07'
     reference_end = '2001-12-31'
+    
+    #slice data between start and end dates
     start_date = '1979-09-07'
     end_date = '2022-12-31'
 
@@ -19,6 +22,7 @@ def main():
 
     os.makedirs(save_dir, exist_ok=True)
 
+    #open required datasets
     raw_olr_ds = xr.open_dataset(olr_file_path).isel(time=slice(249, None)) #remove some corrupted dates
     raw_era5_ds = xr.open_zarr(era5_file_path)
     seasonal_cycle_ds = xr.open_dataset(os.path.join(reference_dir, 'seasonal_cycle.nc'))
@@ -40,6 +44,7 @@ def main():
     u850_data_2p5d = u850_regridder(u850_data)
     u200_data_2p5d = u200_regridder(u200_data)
 
+    #slide and load data for required period
     period = slice(start_date, end_date)
     olr_data_2p5d = olr_data_2p5d.sel(time=period).load()
     u850_data_2p5d = u850_data_2p5d.sel(time=period).load()
@@ -54,22 +59,27 @@ def main():
     u850_anomalies = u850_data_2p5d - u850_seasonal_cycle
     u200_anomalies = u200_data_2p5d - u200_seasonal_cycle
 
+    #detrend anomalies by removing 120d running mean
     detrended_olr_anomalies = detrend_anomalies(olr_anomalies)
     detrended_u850_anomalies = detrend_anomalies(u850_anomalies)
     detrended_u200_anomalies = detrend_anomalies(u200_anomalies)
 
+    #average over 15S-15N
     detrended_olr_anomalies_latitude_band_avg = latitude_band_average(detrended_olr_anomalies)
     detrended_u850_anomalies_latitude_band_avg = latitude_band_average(detrended_u850_anomalies)
     detrended_u200_anomalies_latitude_band_avg = latitude_band_average(detrended_u200_anomalies)
 
+    #normalize each variable with factors calculated from reference period
     detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg / normalization_factor_ds['olr']
     detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg / normalization_factor_ds['u850']
     detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg / normalization_factor_ds['u200']
 
+    #drop missing values
     detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
     detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
     detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
 
+    #ensure timesteps are aligned
     olr, u850, u200 = xr.align(
         detrended_olr_anomalies_latitude_band_avg_norm,
         detrended_u850_anomalies_latitude_band_avg_norm,
@@ -77,14 +87,18 @@ def main():
         join='inner'
     )
 
+    #combine data
     X = xr.concat([olr['olr'], u850['u850'], u200['u200']], dim='lon')  # (time, 3 × lon)  
 
+    #project data onto reference EOFs
     RMM1 = X.values @ EOF_ds['EOF1'].values
     RMM2 = X.values @ EOF_ds['EOF2'].values
 
+    #divive RMM indices by factors calculated from reference period
     RMM1_norm = RMM1 / normalization_factor_ds['RMM1_std'].values
     RMM2_norm = RMM2 / normalization_factor_ds['RMM2_std'].values
 
+    #save indices to txt file
     save_rmm_indices(
         time=olr.time.values,
         RMM1=RMM1_norm,

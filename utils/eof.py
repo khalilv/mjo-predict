@@ -219,9 +219,6 @@ def main():
     RMM1_std = RMM1.std()
     RMM2_std = RMM2.std()
 
-    RMM1_norm = RMM1 / RMM1_std
-    RMM2_norm = RMM2 / RMM1_std
-
     normalization_factor_ds = xr.Dataset({
         'olr': olr_normalization_factor['olr'],
         'u850': u850_normalization_factor['u850'], 
