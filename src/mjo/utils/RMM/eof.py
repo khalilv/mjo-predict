@@ -1,9 +1,9 @@
+import os 
 import xarray as xr
 import numpy as np
 import xesmf as xe
 from scipy.linalg import lstsq
 from matplotlib import pyplot as plt
-import os 
 
 def harmonic_terms(fraction):
     return np.array([

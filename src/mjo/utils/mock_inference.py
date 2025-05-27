@@ -1,5 +1,5 @@
-from utils.rmm_io import load_rmm_indices, save_rmm_indices
 import os
+from src.mjo.utils.RMM.io import load_rmm_indices, save_rmm_indices
 
 predict_filepath = '/glade/derecho/scratch/kvirji/DATA/MJO/RMM/reference_period_1979-09-07_to_2001-12-31/rmm.txt'
 output_dir = '/glade/derecho/scratch/kvirji/mjo-predict/exps/mock'

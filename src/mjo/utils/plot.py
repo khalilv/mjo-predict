@@ -1,6 +1,6 @@
-from matplotlib import pyplot as plt
-import numpy as np
 import math
+import numpy as np
+from matplotlib import pyplot as plt
 
 def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplitude, gt_amplitude, pred_label = None, gt_label = None, output_filename = None):
     pred_label = pred_label if pred_label else 'Predictions'

@@ -1,8 +1,8 @@
-import pandas as pd
 import os
+import pandas as pd
 import numpy as np
-from rmm_io import load_rmm_indices
-from plot import correlation_scatter_plot
+from src.mjo.utils.RMM.io import load_rmm_indices
+from src.mjo.utils.plot import correlation_scatter_plot
 
 def subset_rmm_data(df, start_year, end_year, compute_statistics):
     

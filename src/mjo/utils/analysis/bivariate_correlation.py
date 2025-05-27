@@ -1,9 +1,10 @@
+import os
 import pandas as pd
 import numpy as np
-import os
-from rmm_io import load_rmm_indices
-from plot import bivariate_correlation_vs_lead_time_plot
 from tqdm import tqdm
+from mjo.utils.RMM.io import load_rmm_indices
+from src.mjo.utils.plot import bivariate_correlation_vs_lead_time_plot
+
 
 def bivariate_correlation(predict_rmm1, ground_truth_rmm1, predict_rmm2, ground_truth_rmm2):
     n = np.sum((predict_rmm1 * ground_truth_rmm1) + (predict_rmm2 * ground_truth_rmm2))
