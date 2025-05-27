@@ -1,8 +1,8 @@
 import os
 import pandas as pd
 import numpy as np
-from src.mjo.utils.RMM.io import load_rmm_indices
-from src.mjo.utils.plot import correlation_scatter_plot
+from mjo.utils.RMM.io import load_rmm_indices
+from mjo.utils.plot import correlation_scatter_plot
 
 def subset_rmm_data(df, start_year, end_year, compute_statistics):
     
@@ -38,8 +38,10 @@ def main():
     test_df = subset_rmm_data(input_df, test_start_year, test_end_year, False)
 
     np.savez(os.path.join(output_dir, 'statistics.npz'),
-            mean=mean.values,
-            std=std.values)
+            RMM1_mean=mean['RMM1'],
+            RMM2_mean=mean['RMM2'],
+            RMM1_std=std['RMM1'],
+            RMM2_std=std['RMM2'])
 
     np.savez(os.path.join(output_dir, 'train.npz'),
             RMM1=train_df['RMM1'].values,

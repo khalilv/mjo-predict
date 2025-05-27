@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
-from src.mjo.utils.RMM.io import load_rmm_indices
-from src.mjo.utils.plot import phase_space_plot
+from mjo.utils.RMM.io import load_rmm_indices
+from mjo.utils.plot import phase_space_plot
 
 def main():
         

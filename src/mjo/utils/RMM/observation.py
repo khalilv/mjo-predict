@@ -2,8 +2,8 @@ import os
 import xarray as xr
 import numpy as np
 import xesmf as xe
-from src.mjo.utils.RMM.eof import detrend_anomalies, latitude_band_average
-from src.mjo.utils.RMM.io import save_rmm_indices
+from mjo.utils.RMM.eof import detrend_anomalies, latitude_band_average
+from mjo.utils.RMM.io import save_rmm_indices
 
 def main():
 
