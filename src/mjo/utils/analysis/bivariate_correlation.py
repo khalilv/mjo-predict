@@ -14,9 +14,9 @@ def bivariate_correlation(predict_rmm1, ground_truth_rmm1, predict_rmm2, ground_
 
 def main():
 
-    predict_dir = '/glade/derecho/scratch/kvirji/mjo-predict/exps/mock'
-    ground_truth_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/ABM/rmm.74toRealtime.txt"
-    output_filename = '/glade/derecho/scratch/kvirji/mjo-predict/plots/bivariate_correlation_ours_vs_abm.png'
+    predict_dir = '/glade/derecho/scratch/kvirji/mjo-predict/exps/TSMixer/historical_only/logs/version_0/outputs'
+    ground_truth_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/RMM/reference_period_1979-09-07_to_2001-12-31/rmm.txt"
+    output_filename = '/glade/derecho/scratch/kvirji/mjo-predict/plots/bivariate_correlation_tsmixer.png'
 
     ground_truth_df = load_rmm_indices(ground_truth_filepath)
 
@@ -47,7 +47,7 @@ def main():
     bivariate_correlation_vs_lead_time_plot(
         lead_times=np.arange(1, max_lead_time + 1),
         correlations=[lead_time_correlations],
-        labels=['Ours'],
+        labels=['TSMixer'],
         output_filename=output_filename
     )
 

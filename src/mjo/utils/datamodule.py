@@ -89,6 +89,12 @@ class MJOForecastDataModule(LightningDataModule):
 
     def get_predictions(self):
         return self.predictions
+
+    def get_in_variables(self):
+        return self.in_variables
+    
+    def get_out_variables(self):
+        return self.out_variables
     
     def get_transforms(self, group: str):
         if group == 'in':
@@ -215,7 +221,14 @@ def main():
 
     print("Iterating through training dataloader and printing samples:")
     for i, batch in enumerate(train_loader):
-        print(batch)
+        in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps = batch
+        print("Input Data Shape:", in_data.shape)
+        print("Output Data Shape:", out_data.shape)
+        print("Input Variables:", in_variables)
+        print("Output Variables:", out_variables)
+        print("Input Timestamps Shape:", in_timestamps.shape)
+        print("Output Timestamps Shape:", out_timestamps.shape)
+        print("-" * 50)
         if i >= 10:
             break
 
