@@ -22,7 +22,6 @@ class MSE(Metric):
         # preds, targets: (B, T, V)
         error = preds - targets
         squared_error = error ** 2
-        print(squared_error.sum(), squared_error.numel())
         self.sum_squared_error += squared_error.sum(dim=(0,1))
         self.num_elements += squared_error.shape[0] * squared_error.shape[1]
 

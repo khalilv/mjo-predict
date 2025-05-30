@@ -7,7 +7,7 @@ from mjo.utils.datamodule import MJOForecastDataModule
 from mjo.TSMixer.module import MJOForecastModule
 from pytorch_lightning.cli import LightningCLI
 
-# 1) entry point high-level class for training climaX. 
+# 1) entry point high-level class for training TSMixer
 
 def main():
     # Initialize Lightning with the model and data modules, and instruct it to parse the config yml

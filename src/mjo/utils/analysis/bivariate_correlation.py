@@ -14,40 +14,55 @@ def bivariate_correlation(predict_rmm1, ground_truth_rmm1, predict_rmm2, ground_
 
 def main():
 
-    predict_dir = '/glade/derecho/scratch/kvirji/mjo-predict/exps/TSMixer/historical_only/logs/version_0/outputs'
+    predict_dirs = [
+        '/glade/derecho/scratch/kvirji/mjo-predict/exps/TSMixer/historical_only/hist_10d_predict_60d/logs/version_0/outputs',
+        '/glade/derecho/scratch/kvirji/mjo-predict/exps/TSMixer/historical_only/hist_720d_predict_60d/logs/version_0/outputs'
+    ]
+    labels = [
+        'TSMixer 10d history',
+        'TSMixer 720d history'
+
+    ]
     ground_truth_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/RMM/reference_period_1979-09-07_to_2001-12-31/rmm.txt"
-    output_filename = '/glade/derecho/scratch/kvirji/mjo-predict/plots/bivariate_correlation_tsmixer.png'
+    output_filename = '/glade/derecho/scratch/kvirji/mjo-predict/plots/bivariate_correlation_tsmixer_history_only.png'
 
     ground_truth_df = load_rmm_indices(ground_truth_filepath)
 
-    dataframes = []
-    max_lead_time = -1
-    for filename in tqdm(os.listdir(predict_dir), 'Loading data'):
-        df = load_rmm_indices(os.path.join(predict_dir, filename))
-        max_lead_time = max(max_lead_time, len(df))
-        dataframes.append(df)
+    all_lead_time_correlations = []
+    max_lead_times = []
+    for predict_dir in predict_dirs:
+        dataframes = []
+        max_lead_time = -1
+        for filename in tqdm(os.listdir(predict_dir), f'Loading data from {predict_dir}'):
+            df = load_rmm_indices(os.path.join(predict_dir, filename))
+            max_lead_time = max(max_lead_time, len(df))
+            dataframes.append(df)
 
-    lead_time_correlations = []
-    for lt in tqdm(range(max_lead_time), 'Computing corr per lead time'):
-        predict_group = []
-        ground_truth_group = []
+        lead_time_correlations = []
+        for lt in tqdm(range(max_lead_time), 'Computing corr per lead time'):
+            predict_group = []
+            ground_truth_group = []
 
-        for df in dataframes:
-            if lt < len(df):
-                predict_row = df.iloc[lt]
-                ground_truth_row = ground_truth_df.loc[df.index[lt]]
-                predict_group.append(predict_row)
-                ground_truth_group.append(ground_truth_row)
+            for df in dataframes:
+                if lt < len(df):
+                    predict_row = df.iloc[lt]
+                    ground_truth_row = ground_truth_df.loc[df.index[lt]]
+                    predict_group.append(predict_row)
+                    ground_truth_group.append(ground_truth_row)
 
-        predict_group = pd.DataFrame(predict_group)
-        ground_truth_group = pd.DataFrame(ground_truth_group)
-        corr = bivariate_correlation(predict_group.RMM1.values, ground_truth_group.RMM1.values, predict_group.RMM2.values, ground_truth_group.RMM2.values)
-        lead_time_correlations.append(corr)
+            predict_group = pd.DataFrame(predict_group)
+            ground_truth_group = pd.DataFrame(ground_truth_group)
+            corr = bivariate_correlation(predict_group.RMM1.values, ground_truth_group.RMM1.values, predict_group.RMM2.values, ground_truth_group.RMM2.values)
+            lead_time_correlations.append(corr)
+        
+        all_lead_time_correlations.append(lead_time_correlations)
+        max_lead_times.append(max_lead_time)
+
 
     bivariate_correlation_vs_lead_time_plot(
-        lead_times=np.arange(1, max_lead_time + 1),
-        correlations=[lead_time_correlations],
-        labels=['TSMixer'],
+        lead_times=[np.arange(1, max_lead_time + 1) for max_lead_time in max_lead_times],
+        correlations=all_lead_time_correlations,
+        labels=labels,
         output_filename=output_filename
     )
 

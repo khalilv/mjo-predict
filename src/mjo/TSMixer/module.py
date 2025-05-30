@@ -167,7 +167,7 @@ class MJOForecastModule(LightningModule):
             )
 
         self.train_mse.reset()
-        return batch_loss['mse']
+        return batch_loss['mse_norm']
     
     def validation_step(self, batch: Any, batch_idx: int):
         in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps = batch
@@ -194,6 +194,7 @@ class MJOForecastModule(LightningModule):
                 sync_dist=True
             )
         self.val_mse.reset()
+        return loss_dict
     
     def on_test_epoch_start(self):
         if self.save_outputs:
@@ -237,6 +238,7 @@ class MJOForecastModule(LightningModule):
                 sync_dist=True
             )
         self.test_mse.reset()
+        return loss_dict
 
     #optimizer definition - will be used to optimize the network
     def configure_optimizers(self):
