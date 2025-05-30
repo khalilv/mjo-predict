@@ -45,14 +45,11 @@ class NPZReader(IterableDataset):
         data = dict(np.load(self.file_path))
         if self.overflow_file_paths:
             curr_file, total_files = 1, len(self.overflow_file_paths)
-            required_history_prepended = False
-            while not required_history_prepended and curr_file <= total_files:
+            history_to_append = self.history_range
+            while history_to_append > 0 and curr_file <= total_files:
                 overflow = dict(np.load(self.overflow_file_paths[total_files - curr_file]))
-                if len(overflow['dates']) >= self.history_range:
-                    H = -self.history_range
-                    required_history_prepended = True
-                else:
-                    H = 0
+                H = -history_to_append if len(overflow['dates']) >= history_to_append else 0
+                history_to_append -= len(overflow['dates'])
                 if (data['dates'][0] - overflow['dates'][-1]).astype('timedelta64[D]') > 1:
                         print(f"Warning: Gap between last element of overflow {overflow['dates'][-1]} and first element of data {data['dates'][0]} is greater than 1 day")
                 for v in data.keys():

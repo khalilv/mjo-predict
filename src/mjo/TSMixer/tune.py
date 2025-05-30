@@ -61,7 +61,7 @@ def run_optimization(n_trials=50):
     return study
 
 def main():
-    study = run_optimization(n_trials=2)
+    study = run_optimization(n_trials=50)
     print("Best trial:")
     trial = study.best_trial
     print(f"  Loss: {trial.value}")
