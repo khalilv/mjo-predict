@@ -14,6 +14,9 @@ class NPZReader(IterableDataset):
             If provided must all be positive integers. Defaults to [] (current timestamp).
         history (list, optional): List of history elements to include in input. 
             If provided must all be negative integers. Defaults to [] (current timestamp).
+        overflow_file_paths (list[str], optional): List of overflow NPZ data files to prepend. 
+            Must be in order from oldest to newest. Will be concatenated as [overflow[0], ... overflow[-1], file_path]
+
     """
     def __init__(
         self,
@@ -22,6 +25,7 @@ class NPZReader(IterableDataset):
         out_variables: list,
         predictions: list = [],
         history: list = [],
+        overflow_file_paths: list = [],
     ) -> None:
         super().__init__()
         self.file_path = file_path
@@ -29,6 +33,7 @@ class NPZReader(IterableDataset):
         self.out_variables = out_variables
         self.predictions = sorted(predictions)
         self.history = sorted(history)
+        self.overflow_file_paths = overflow_file_paths
         if self.history:
             assert all(h < 0 and isinstance(h, int) for h in self.history), "All history elements must be negative integers"
         if self.predictions:
@@ -37,7 +42,22 @@ class NPZReader(IterableDataset):
         self.predict_range = max(self.predictions) if self.predictions else 0
 
     def __iter__(self):
-        data = np.load(self.file_path)
+        data = dict(np.load(self.file_path))
+        if self.overflow_file_paths:
+            curr_file, total_files = 1, len(self.overflow_file_paths)
+            required_history_prepended = False
+            while not required_history_prepended and curr_file <= total_files:
+                overflow = dict(np.load(self.overflow_file_paths[total_files - curr_file]))
+                if len(overflow['dates']) >= self.history_range:
+                    H = -self.history_range
+                    required_history_prepended = True
+                else:
+                    H = 0
+                if (data['dates'][0] - overflow['dates'][-1]).astype('timedelta64[D]') > 1:
+                        print(f"Warning: Gap between last element of overflow {overflow['dates'][-1]} and first element of data {data['dates'][0]} is greater than 1 day")
+                for v in data.keys():
+                    data[v] = np.concatenate([overflow[v][H:], data[v]])
+                curr_file += 1
         
         if not torch.distributed.is_initialized():
             global_rank = 0

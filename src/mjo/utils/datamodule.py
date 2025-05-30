@@ -140,6 +140,7 @@ class MJOForecastDataModule(LightningDataModule):
                     out_variables=self.out_variables,
                     predictions=self.predictions,
                     history=self.history,
+                    overflow_file_paths=[self.train_file]
                 ),
                 normalize_data = self.normalize_data,
                 in_transforms=self.in_transforms,
@@ -154,6 +155,7 @@ class MJOForecastDataModule(LightningDataModule):
                     out_variables=self.out_variables,
                     predictions=self.predictions,
                     history=self.history,
+                    overflow_file_paths=[self.train_file, self.val_file]
                 ),
                 normalize_data = self.normalize_data,
                 in_transforms=self.in_transforms,
