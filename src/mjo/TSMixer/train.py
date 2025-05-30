@@ -25,6 +25,7 @@ def main():
     cli.model.set_output_length(len(cli.datamodule.get_predictions()))
     cli.model.set_input_dim(len(cli.datamodule.get_in_variables()))
     cli.model.set_output_dim(len(cli.datamodule.get_out_variables()))
+    cli.model.set_out_variables(cli.datamodule.get_out_variables())
     if cli.datamodule.normalize_data:
         cli.model.set_denormalization(cli.datamodule.get_transforms('out'))
     cli.model.init_metrics()

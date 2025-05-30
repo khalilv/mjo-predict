@@ -111,12 +111,15 @@ class MJOForecastModule(LightningModule):
     def set_output_dim(self, output_dim: int):
         self.output_dim = output_dim
     
+    def set_out_variables(self, out_variables: list):
+        self.out_variables = out_variables
+
     def init_metrics(self):
         denormalize = self.denormalization.denormalize if self.denormalization else None
 
-        self.train_mse = MSE(transforms=None, suffix=None)
-        self.val_mse = MSE(transforms=denormalize, suffix=None)        
-        self.test_mse = MSE(transforms=denormalize, suffix=None)
+        self.train_mse = MSE(vars=self.out_variables, transforms=None, suffix='norm')
+        self.val_mse = MSE(vars=self.out_variables, transforms=None, suffix='norm')        
+        self.test_mse = MSE(vars=self.out_variables, transforms=denormalize, suffix=None)
 
     def init_network(self):
         self.net = TSMixerX(
