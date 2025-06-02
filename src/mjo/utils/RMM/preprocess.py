@@ -22,7 +22,7 @@ def subset_rmm_data(df, start_year, end_year, compute_statistics):
 def main():
         
     train_start_year = 1979
-    val_start_year = 2020
+    val_start_year = 2019
     test_start_year = 2021
     test_end_year = 2023
     input_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/RMM/reference_period_1979-09-07_to_2001-12-31/rmm.txt"

@@ -9,7 +9,6 @@ from mjo.utils.datamodule import MJOForecastDataModule
 from mjo.TSMixer.module import MJOForecastModule
 from pytorch_lightning.cli import LightningCLI
 from optuna_integration import PyTorchLightningPruningCallback
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 def objective(trial):
     
@@ -68,11 +67,7 @@ def objective(trial):
     # train
     cli.trainer.fit(cli.model, datamodule=cli.datamodule)
 
-    early_stop_callback = next(
-        cb for cb in cli.trainer.callbacks if isinstance(cb, EarlyStopping)
-    )
-
-    return early_stop_callback.best_score.item()
+    return cli.trainer.callback_metrics['val/mse_norm'].item()
 
 def run_optimization(n_trials, root_dir):
     pruner = optuna.pruners.MedianPruner(
