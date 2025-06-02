@@ -9,6 +9,7 @@ from mjo.utils.datamodule import MJOForecastDataModule
 from mjo.TSMixer.module import MJOForecastModule
 from pytorch_lightning.cli import LightningCLI
 from optuna_integration import PyTorchLightningPruningCallback
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 def objective(trial):
     
@@ -16,8 +17,13 @@ def objective(trial):
     hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 9)
     ff_size = 2 ** trial.suggest_int('ff_exp', 5, 9)
     num_blocks = trial.suggest_int('num_blocks', 2, 16)
-    lr = trial.suggest_float('lr', 1e-6, 1e-2, log=True)
+    lr = trial.suggest_float('lr', 1e-7, 1e-2, log=True)
     dropout = trial.suggest_float('dropout', 0.1, 0.9)
+    beta_1 = trial.suggest_float("beta_1", 0.85, 0.99)
+    beta_2 = trial.suggest_float("beta_2", 0.95, 0.999)
+    weight_decay = trial.suggest_float("weight_decay", 1e-7, 1e-2, log=True)
+    normalize_before = trial.suggest_categorical("normalize_before", [True, False])
+    
 
     # Set up CLI (without running)
     cli = LightningCLI(
@@ -48,6 +54,10 @@ def objective(trial):
     cli.model.ff_size = ff_size
     cli.model.num_blocks = num_blocks
     cli.model.lr = lr
+    cli.model.beta_1 = beta_1
+    cli.model.beta_2 = beta_2
+    cli.model.weight_decay = weight_decay
+    cli.model.normalize_before = normalize_before
     cli.model.dropout = dropout
     cli.model.init_network()
 
@@ -58,13 +68,17 @@ def objective(trial):
     # train
     cli.trainer.fit(cli.model, datamodule=cli.datamodule)
 
-    return cli.trainer.callback_metrics['val/mse_norm'].item()
+    early_stop_callback = next(
+        cb for cb in cli.trainer.callbacks if isinstance(cb, EarlyStopping)
+    )
+
+    return early_stop_callback.best_score.item()
 
 def run_optimization(n_trials, root_dir):
     pruner = optuna.pruners.MedianPruner(
         n_startup_trials=10,
         n_warmup_steps=10,
-        interval_steps=2
+        n_min_trials = 10
     )
     sampler = optuna.samplers.TPESampler(
         multivariate=True,
@@ -89,7 +103,7 @@ def run_optimization(n_trials, root_dir):
     return study, db_path
 
 def main():
-    # Create CLI once to access root_dir before Optuna runs
+    # Create CLI once to access root_dir before optuna runs
     cli = LightningCLI(
         model_class=MJOForecastModule,
         datamodule_class=MJOForecastDataModule,
