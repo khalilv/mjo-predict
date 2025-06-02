@@ -11,7 +11,7 @@ trainer:
   strategy: auto
 
   min_epochs: 1
-  max_epochs: 100
+  max_epochs: 250
   enable_progress_bar: true
 
   sync_batchnorm: false
@@ -98,6 +98,6 @@ data:
   history: [-10,-9,-8,-7,-6,-5,-4,-3,-2,-1]
   normalize_data: true
   max_buffer_size: 10000
-  batch_size: 32
+  batch_size: 64
   num_workers: 0
   pin_memory: false

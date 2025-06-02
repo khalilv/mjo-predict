@@ -13,9 +13,11 @@ def subset_rmm_data(df, start_year, end_year, compute_statistics):
 
     # Compute normalization statistics on train only
     if compute_statistics:
+        year_mean = subset_df.index.year.values.mean()
+        year_std = subset_df.index.year.values.std()
         mean = subset_df[['RMM1', 'RMM2']].mean()
         std = subset_df[['RMM1', 'RMM2']].std()
-        return subset_df, mean, std
+        return subset_df, mean, std, year_mean, year_std
     else:
         return subset_df
 
@@ -33,7 +35,7 @@ def main():
 
     input_df = load_rmm_indices(input_filepath, train_start_year, test_end_year)
 
-    train_df, mean, std = subset_rmm_data(input_df, train_start_year, val_start_year, True)
+    train_df, mean, std, year_mean, year_std = subset_rmm_data(input_df, train_start_year, val_start_year, True)
     val_df = subset_rmm_data(input_df, val_start_year, test_start_year, False)
     test_df = subset_rmm_data(input_df, test_start_year, test_end_year, False)
 
@@ -41,7 +43,9 @@ def main():
             RMM1_mean=mean['RMM1'],
             RMM2_mean=mean['RMM2'],
             RMM1_std=std['RMM1'],
-            RMM2_std=std['RMM2'])
+            RMM2_std=std['RMM2'],
+            year_mean=year_mean, 
+            year_std=year_std)
 
     np.savez(os.path.join(output_dir, 'train.npz'),
             RMM1=train_df['RMM1'].values,
