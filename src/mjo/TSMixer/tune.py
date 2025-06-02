@@ -117,7 +117,7 @@ def main():
     os.makedirs(root_dir, exist_ok=True)
 
     # Run optimization
-    study, _ = run_optimization(n_trials=100, root_dir=root_dir)
+    study, _ = run_optimization(n_trials=150, root_dir=root_dir)
 
     # Save best trial params to YAML in root_dir
     trial = study.best_trial
