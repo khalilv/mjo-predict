@@ -28,6 +28,7 @@ def main():
     cli.model.set_out_variables(cli.datamodule.get_out_variables())
     if cli.datamodule.normalize_data:
         cli.model.set_denormalization(cli.datamodule.get_transforms('out'))
+        cli.model.set_year_normalization(cli.datamodule.get_transforms('year'))
     cli.model.init_metrics()
     cli.model.init_network()
 

@@ -68,8 +68,11 @@ class MJOForecastDataModule(LightningDataModule):
 
         in_mean, in_std = self.get_normalization_stats(self.stats_file, self.in_variables)
         out_mean, out_std = self.get_normalization_stats(self.stats_file, self.out_variables)
+        year_mean, year_std = self.get_year_stats(self.stats_file)
+
         self.in_transforms = NormalizeDenormalize(in_mean, in_std)
         self.out_transforms = NormalizeDenormalize(out_mean, out_std)
+        self.year_transforms = NormalizeDenormalize(year_mean, year_std)
 
         self.data_train: Optional[IterableDataset] = None
         self.data_val: Optional[IterableDataset] = None
@@ -84,6 +87,12 @@ class MJOForecastDataModule(LightningDataModule):
         normalize_std = np.array([statistics[f"{var}_std"] for var in variables])
         return normalize_mean, normalize_std
     
+    def get_year_stats(self, file):
+        statistics = np.load(file)
+        year_mean = np.array([statistics['year_mean']])
+        year_std = np.array([statistics['year_std']])
+        return year_mean, year_std
+
     def get_history(self):
         return self.history
 
@@ -101,6 +110,8 @@ class MJOForecastDataModule(LightningDataModule):
             return copy.deepcopy(self.in_transforms)
         elif group == 'out':
             return copy.deepcopy(self.out_transforms)
+        elif group == 'year':
+            return copy.deepcopy(self.year_transforms)
         else:
             raise ValueError(f"Invalid normalization group name: {group}")
 
@@ -112,6 +123,8 @@ class MJOForecastDataModule(LightningDataModule):
         if group == 'in':
             self.in_transforms.update(mean, std)
         elif group == 'out':
+            self.out_transforms.update(mean, std)
+        elif group == 'year':
             self.out_transforms.update(mean, std)
         else:
             raise ValueError(f"Invalid normalization group name: {group}")

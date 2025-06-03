@@ -4,6 +4,7 @@
 # credits: https://github.com/ashleve/lightning-hydra-template/blob/main/src/models/mnist_module.py
 import os
 import torch
+import numpy as np
 from typing import Any
 from pytorch_lightning import LightningModule
 from mjo.TSMixer.model import TSMixerX
@@ -88,6 +89,7 @@ class MJOForecastModule(LightningModule):
         # Output and utility attributes
         self.save_outputs = save_outputs
         self.denormalization = None
+        self.year_normalization = None
 
         self.save_hyperparameters(logger=False, ignore=["net"])      
 
@@ -148,14 +150,44 @@ class MJOForecastModule(LightningModule):
     def set_denormalization(self, denormalization):
         self.denormalization = denormalization
     
+    def set_year_normalization(self, normalization):
+        self.year_normalization = normalization
+    
     def setup(self, stage: str):
-        self.denormalization.to(device=self.device, dtype=self.dtype)
+        if self.denormalization:
+            self.denormalization.to(device=self.device, dtype=self.dtype)
+        if self.year_normalization:
+            self.year_normalization.to(device=self.device, dtype=self.dtype)
+    
+    def get_timestamp_encodings(self, timestamps):
+        years = torch.tensor(timestamps.astype('datetime64[Y]').astype(int) + 1970, device=self.device, dtype=self.dtype)
+        if self.year_normalization:
+            years = self.year_normalization.normalize(years)
+        print(self.year_normalization)
+        start_of_year = timestamps.astype('datetime64[Y]')
+        doy = (timestamps - start_of_year).astype('timedelta64[D]').astype(int)
+        next_year = (start_of_year + np.timedelta64(1, 'Y')).astype('datetime64[D]')
+        days_in_year = (next_year - start_of_year).astype(int)  # shape (B, L)
+
+        # Angle for sin/cos embedding
+        angle = 2 * np.pi * doy / days_in_year
+        sin = np.sin(angle)
+        cos = np.cos(angle)
+
+        doy_encoding = torch.tensor(np.stack([sin, cos], axis=-1),  device=self.device, dtype=self.dtype)
+
+        timestamp_encodings = torch.cat([years.unsqueeze(-1), doy_encoding], dim=-1)
+
+        return timestamp_encodings
 
     def training_step(self, batch: Any, batch_idx: int):
         in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps = batch
 
-        x_past = in_data
-        x_future = None
+        in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
+        out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
+
+        x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
+        x_future = out_timestamp_encodings
         x_static = None
 
         pred_data = self.net.forward(x_in=(x_past, x_future, x_static))
@@ -174,9 +206,12 @@ class MJOForecastModule(LightningModule):
     
     def validation_step(self, batch: Any, batch_idx: int):
         in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps = batch
+        
+        in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
+        out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
 
-        x_past = in_data
-        x_future = None
+        x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
+        x_future = out_timestamp_encodings
         x_static = None
 
         pred_data = self.net.forward(x_in=(x_past, x_future, x_static))
@@ -207,8 +242,11 @@ class MJOForecastModule(LightningModule):
     def test_step(self, batch: Any, batch_idx: int):
         in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps = batch
 
-        x_past = in_data
-        x_future = None
+        in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
+        out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
+
+        x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
+        x_future = out_timestamp_encodings
         x_static = None
 
         pred_data = self.net.forward(x_in=(x_past, x_future, x_static))

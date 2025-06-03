@@ -414,6 +414,29 @@ class TSMixerX(nn.Module):
             **mixer_params,
         )
         self.fc_out = nn.Linear(hidden_size, output_dim * nr_params)
+        # self.init_weights()
+    
+    def init_weights(self):
+        def _init_fn(module):
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_normal_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+            elif isinstance(module, (nn.LayerNorm, nn.BatchNorm1d, nn.BatchNorm2d)):
+                if module.weight is not None:
+                    nn.init.ones_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+            elif isinstance(module, TimeBatchNorm2d):
+                if module.weight is not None:
+                    nn.init.ones_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+        # Apply to all submodules
+        self.apply(_init_fn)
 
     @staticmethod
     def _build_mixer(
@@ -506,7 +529,6 @@ class TSMixerX(nn.Module):
         return x
     
 
-        # INSERT_YOUR_CODE
 def main():
     # Example parameters for TSMixerX
     input_length = 10

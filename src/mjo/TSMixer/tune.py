@@ -13,15 +13,15 @@ from optuna_integration import PyTorchLightningPruningCallback
 def objective(trial):
     
     # hyperparameters to optimize
-    hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 9)
-    ff_size = 2 ** trial.suggest_int('ff_exp', 5, 9)
-    num_blocks = trial.suggest_int('num_blocks', 2, 16)
-    lr = trial.suggest_float('lr', 1e-7, 1e-2, log=True)
+    hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 10)
+    ff_size = 2 ** trial.suggest_int('ff_exp', 5, 10)
+    num_blocks = trial.suggest_int('num_blocks', 4, 16, step=2)
+    lr = trial.suggest_float('lr', 1e-7, 1e-4, log=True)
     dropout = trial.suggest_float('dropout', 0.1, 0.9)
-    beta_1 = trial.suggest_float("beta_1", 0.85, 0.99)
-    beta_2 = trial.suggest_float("beta_2", 0.95, 0.999)
-    weight_decay = trial.suggest_float("weight_decay", 1e-7, 1e-2, log=True)
-    normalize_before = trial.suggest_categorical("normalize_before", [True, False])
+    # beta_1 = trial.suggest_float("beta_1", 0.85, 0.99)
+    # beta_2 = trial.suggest_float("beta_2", 0.95, 0.999)
+    # weight_decay = trial.suggest_float("weight_decay", 1e-7, 1e-2, log=True)
+    # normalize_before = trial.suggest_categorical("normalize_before", [True, False])
     
 
     # Set up CLI (without running)
@@ -47,16 +47,17 @@ def objective(trial):
 
     if cli.datamodule.normalize_data:
         cli.model.set_denormalization(cli.datamodule.get_transforms('out'))
+        cli.model.set_year_normalization(cli.datamodule.get_transforms('year'))
 
     cli.model.init_metrics()
     cli.model.hidden_size = hidden_size
     cli.model.ff_size = ff_size
     cli.model.num_blocks = num_blocks
     cli.model.lr = lr
-    cli.model.beta_1 = beta_1
-    cli.model.beta_2 = beta_2
-    cli.model.weight_decay = weight_decay
-    cli.model.normalize_before = normalize_before
+    # cli.model.beta_1 = beta_1
+    # cli.model.beta_2 = beta_2
+    # cli.model.weight_decay = weight_decay
+    # cli.model.normalize_before = normalize_before
     cli.model.dropout = dropout
     cli.model.init_network()
 
@@ -72,8 +73,8 @@ def objective(trial):
 def run_optimization(n_trials, root_dir):
     pruner = optuna.pruners.MedianPruner(
         n_startup_trials=10,
-        n_warmup_steps=10,
-        n_min_trials = 10
+        n_warmup_steps=20,
+        n_min_trials=20
     )
     sampler = optuna.samplers.TPESampler(
         multivariate=True,
@@ -112,7 +113,7 @@ def main():
     os.makedirs(root_dir, exist_ok=True)
 
     # Run optimization
-    study, _ = run_optimization(n_trials=150, root_dir=root_dir)
+    study, _ = run_optimization(n_trials=100, root_dir=root_dir)
 
     # Save best trial params to YAML in root_dir
     trial = study.best_trial
