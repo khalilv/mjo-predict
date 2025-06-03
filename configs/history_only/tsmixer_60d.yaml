@@ -2,7 +2,7 @@ seed_everything: 42
 
 # ---------------------------- TRAINER -------------------------------------------
 trainer:
-  default_root_dir: /Users/kvirji/Documents/mjo-predict/exps/TSMixer/historical_only/hist_60d_predict_60d/optuna
+  default_root_dir: /Users/kvirji/Documents/mjo-predict/exps/TSMixer/historical_only/hist_60d_predict_60d/
   precision: 32
 
   devices: 1
@@ -72,20 +72,18 @@ model:
   static_cov_dim: 0
   nr_params: 1
   hidden_size: 64
-  ff_size: 64
-  num_blocks: 2
+  ff_size: 512
+  num_blocks: 14
   activation: "ReLU"
-  dropout: 0.1
+  dropout: 0.25
   norm_type: "TimeBatchNorm2d"
   normalize_before: true
-  lr: 1.0e-4
+  lr: 6e-6
   beta_1: 0.92
   beta_2: 0.95
   weight_decay: 5e-4
-  
   warmup_steps: 1000
   max_steps: 50000
-  
   save_outputs: true
 
 # ---------------------------- DATA -------------------------------------------

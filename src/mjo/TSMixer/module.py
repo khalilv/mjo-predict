@@ -7,7 +7,7 @@ import torch
 from typing import Any
 from pytorch_lightning import LightningModule
 from mjo.TSMixer.model import TSMixerX
-from mjo.utils.lr_scheduler import LinearWarmupConstantLR
+from mjo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from mjo.utils.metrics import MSE, MAE
 from mjo.utils.RMM.io import save_rmm_indices
 
@@ -36,6 +36,7 @@ class MJOForecastModule(LightningModule):
         beta_2 (float): Beta 2 for AdamW optimizer. Default: 0.99.
         weight_decay (float): Weight decay for AdamW optimizer. Default: 1e-5.
         warmup_steps (int): Number of warmup steps for learning rate scheduler. Default: 1000.
+        max_steps (int): Maximum number of steps for learning rate scheduler. Default: 50000.
         save_outputs (bool): Whether to save model outputs. Default: False.
     """
 
@@ -58,6 +59,7 @@ class MJOForecastModule(LightningModule):
         beta_2: float = 0.99,
         weight_decay: float = 1e-5,
         warmup_steps: int = 1000,
+        max_steps: int = 50000,
         save_outputs: bool = False
     ):
         super().__init__()
@@ -81,6 +83,7 @@ class MJOForecastModule(LightningModule):
         self.beta_2 = beta_2
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps
+        self.max_steps = max_steps
 
         # Output and utility attributes
         self.save_outputs = save_outputs
@@ -249,9 +252,12 @@ class MJOForecastModule(LightningModule):
             weight_decay=self.weight_decay,
         )
 
-        lr_scheduler = LinearWarmupConstantLR(
+        lr_scheduler = LinearWarmupCosineAnnealingLR(
             optimizer,
             self.warmup_steps,
+            self.max_steps,
+            warmup_start_lr=self.lr/10,
+            eta_min=self.lr/10,
         )
         scheduler = {"scheduler": lr_scheduler, "interval": "step", "frequency": 1}
 
