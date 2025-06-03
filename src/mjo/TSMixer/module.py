@@ -163,7 +163,7 @@ class MJOForecastModule(LightningModule):
         years = torch.tensor(timestamps.astype('datetime64[Y]').astype(int) + 1970, device=self.device, dtype=self.dtype)
         if self.year_normalization:
             years = self.year_normalization.normalize(years)
-        print(self.year_normalization)
+
         start_of_year = timestamps.astype('datetime64[Y]')
         doy = (timestamps - start_of_year).astype('timedelta64[D]').astype(int)
         next_year = (start_of_year + np.timedelta64(1, 'Y')).astype('datetime64[D]')
