@@ -97,35 +97,38 @@ class Forecast(IterableDataset):
         normalize_data: bool = False, 
         in_transforms = None, 
         out_transforms = None,
+        filter_mjo_events: bool = False
     ) -> None:
         super().__init__()
         self.dataset = dataset
         self.normalize_data = normalize_data
         self.in_transforms = in_transforms
         self.out_transforms = out_transforms
+        self.filter_mjo_events = filter_mjo_events
       
     def __iter__(self):
         for data, in_variables, out_variables, predictions, history, predict_range, history_range in self.dataset:
             
             for t in range(history_range, len(data['dates']) - predict_range):
-                in_data = torch.stack([torch.tensor([data[v][t + h] for h in history + [0]], dtype=torch.get_default_dtype()) for v in in_variables], dim=1)
-                in_timestamps = np.array([data['dates'][t + h] for h in history + [0]])
+                if not self.filter_mjo_events or (self.filter_mjo_events and data['amplitude'][t] > 1):
+                    in_data = torch.stack([torch.tensor([data[v][t + h] for h in history + [0]], dtype=torch.get_default_dtype()) for v in in_variables], dim=1)
+                    in_timestamps = np.array([data['dates'][t + h] for h in history + [0]])
+                    
+                    if predict_range == 0:
+                        out_data = torch.stack([torch.tensor(data[v][t], dtype=torch.get_default_dtype()) for v in out_variables], dim=1)            
+                        out_timestamps = np.array(data['dates'][t])
+                    else:
+                        out_data = torch.stack([torch.tensor([data[v][t + p] for p in predictions], dtype=torch.get_default_dtype()) for v in out_variables], dim=1)
+                        out_timestamps = np.array([data['dates'][t + p] for p in predictions])
+                    
+                    #remove missing datapoints
+                    if torch.isnan(in_data).any() or torch.isnan(out_data).any():
+                        continue
                 
-                if predict_range == 0:
-                    out_data = torch.stack([torch.tensor(data[v][t], dtype=torch.get_default_dtype()) for v in out_variables], dim=1)            
-                    out_timestamps = np.array(data['dates'][t])
-                else:
-                    out_data = torch.stack([torch.tensor([data[v][t + p] for p in predictions], dtype=torch.get_default_dtype()) for v in out_variables], dim=1)
-                    out_timestamps = np.array([data['dates'][t + p] for p in predictions])
-                
-                #remove missing datapoints
-                if torch.isnan(in_data).any() or torch.isnan(out_data).any():
-                    continue
-            
-                if self.normalize_data:
-                    yield self.in_transforms.normalize(in_data), self.out_transforms.normalize(out_data), in_variables, out_variables, in_timestamps, out_timestamps,
-                else:
-                    yield in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps,
+                    if self.normalize_data:
+                        yield self.in_transforms.normalize(in_data), self.out_transforms.normalize(out_data), in_variables, out_variables, in_timestamps, out_timestamps,
+                    else:
+                        yield in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps,
 
 
 class ShuffleIterableDataset(IterableDataset):

@@ -25,6 +25,8 @@ class MJOForecastDataModule(LightningDataModule):
             If provided must all be positive integers. Defaults to [] (current timestamp).
         history (list, optional): List of history elements to include in input. 
             If provided must all be negative integers. Defaults to [] (current timestamp).
+        filter_mjo_events (bool, optional): If true, will only load MJO events classified by amplitude > 1 on the start date during evaluation.
+            Defaults to False. 
         normalize_data (bool, optional): Flag to normalize data. Defaults to False.
         max_buffer_size (int): Maximum buffer size for shuffling. Defaults to 100.
         batch_size (int, optional): Batch size. Defaults to 64.
@@ -39,6 +41,7 @@ class MJOForecastDataModule(LightningDataModule):
         out_variables: list,
         predictions: list = [],
         history: list = [],
+        filter_mjo_events: bool = False,
         normalize_data: bool = False,
         max_buffer_size: int = 100,        
         batch_size: int = 64,
@@ -55,6 +58,7 @@ class MJOForecastDataModule(LightningDataModule):
         self.out_variables = out_variables
         self.predictions = predictions
         self.history = history
+        self.filter_mjo_events = filter_mjo_events
         self.normalize_data = normalize_data
         self.max_buffer_size = max_buffer_size
         self.batch_size = batch_size
@@ -143,6 +147,7 @@ class MJOForecastDataModule(LightningDataModule):
                     normalize_data = self.normalize_data,
                     in_transforms=self.in_transforms,
                     out_transforms=self.out_transforms,
+                    filter_mjo_events=False
                 ),
                 max_buffer_size=self.max_buffer_size,
             )
@@ -158,6 +163,7 @@ class MJOForecastDataModule(LightningDataModule):
                 normalize_data = self.normalize_data,
                 in_transforms=self.in_transforms,
                 out_transforms=self.out_transforms,
+                filter_mjo_events=self.filter_mjo_events
             )
                 
         if stage == 'test':
@@ -173,6 +179,7 @@ class MJOForecastDataModule(LightningDataModule):
                 normalize_data = self.normalize_data,
                 in_transforms=self.in_transforms,
                 out_transforms=self.out_transforms,
+                filter_mjo_events=self.filter_mjo_events
             )
 
     def train_dataloader(self):
