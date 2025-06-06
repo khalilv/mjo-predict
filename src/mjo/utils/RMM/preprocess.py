@@ -15,8 +15,8 @@ def subset_rmm_data(df, start_year, end_year, compute_statistics):
     if compute_statistics:
         year_mean = subset_df.index.year.values.mean()
         year_std = subset_df.index.year.values.std()
-        mean = subset_df[['RMM1', 'RMM2']].mean()
-        std = subset_df[['RMM1', 'RMM2']].std()
+        mean = subset_df[['RMM1', 'RMM2', 'amplitude']].mean()
+        std = subset_df[['RMM1', 'RMM2', 'amplitude']].std()
         return subset_df, mean, std, year_mean, year_std
     else:
         return subset_df
@@ -24,8 +24,8 @@ def subset_rmm_data(df, start_year, end_year, compute_statistics):
 def main():
         
     train_start_year = 1979
-    val_start_year = 2019
-    test_start_year = 2021
+    val_start_year = 2017
+    test_start_year = 2020
     test_end_year = 2023
     input_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/RMM/reference_period_1979-09-07_to_2001-12-31/rmm.txt"
     output_dir = "/glade/derecho/scratch/kvirji/DATA/preprocessed/MJO/reference_period_1979-09-07_to_2001-12-31"
@@ -42,8 +42,10 @@ def main():
     np.savez(os.path.join(output_dir, 'statistics.npz'),
             RMM1_mean=mean['RMM1'],
             RMM2_mean=mean['RMM2'],
+            amplitude_mean=mean['amplitude'],
             RMM1_std=std['RMM1'],
             RMM2_std=std['RMM2'],
+            amplitude_std=std['amplitude'],
             year_mean=year_mean, 
             year_std=year_std)
 
