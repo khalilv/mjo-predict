@@ -228,7 +228,7 @@ class MJOForecastModule(LightningModule):
             self.log(
                 "val/" + key,
                 loss_dict[key],
-                prog_bar=False,
+                prog_bar=True,
                 sync_dist=True
             )
         self.val_mse.reset()

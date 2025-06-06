@@ -54,11 +54,11 @@ def objective(trial):
     cli.model.ff_size = ff_size
     cli.model.num_blocks = num_blocks
     cli.model.lr = lr
+    cli.model.dropout = dropout
     # cli.model.beta_1 = beta_1
     # cli.model.beta_2 = beta_2
     # cli.model.weight_decay = weight_decay
     # cli.model.normalize_before = normalize_before
-    cli.model.dropout = dropout
     cli.model.init_network()
 
     # pruning callback
