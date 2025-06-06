@@ -186,8 +186,11 @@ class MJOForecastModule(LightningModule):
         in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
         out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
 
+        # fuxi_future = out_data
+        # fuxi_past = torch.zeros((in_data.shape[0], in_data.shape[1], out_data.shape[2]), device=self.device, dtype=self.dtype) #fuxi is only known in the future so we set these to 0
+
         x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
-        x_future = out_timestamp_encodings
+        x_future = out_timestamp_encodings #torch.cat([out_timestamp_encodings, fuxi_future], dim=-1) 
         x_static = None
 
         pred_data = self.net.forward(x_in=(x_past, x_future, x_static))
@@ -210,8 +213,11 @@ class MJOForecastModule(LightningModule):
         in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
         out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
 
+        # fuxi_future = out_data
+        # fuxi_past = torch.zeros((in_data.shape[0], in_data.shape[1], out_data.shape[2]), device=self.device, dtype=self.dtype) #fuxi is only known in the future so we set these to 0
+
         x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
-        x_future = out_timestamp_encodings
+        x_future = out_timestamp_encodings #torch.cat([out_timestamp_encodings, fuxi_future], dim=-1) 
         x_static = None
 
         pred_data = self.net.forward(x_in=(x_past, x_future, x_static))
@@ -245,8 +251,11 @@ class MJOForecastModule(LightningModule):
         in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
         out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
 
+        # fuxi_future = out_data
+        # fuxi_past = torch.zeros((in_data.shape[0], in_data.shape[1], out_data.shape[2]), device=self.device, dtype=self.dtype) #fuxi is only known in the future so we set these to 0
+
         x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
-        x_future = out_timestamp_encodings
+        x_future = out_timestamp_encodings #torch.cat([out_timestamp_encodings, fuxi_future], dim=-1) 
         x_static = None
 
         pred_data = self.net.forward(x_in=(x_past, x_future, x_static))
