@@ -121,18 +121,16 @@ def bivariate_correlation_vs_lead_time_plot(lead_times, correlations, labels, ou
         plt.show()
 
 
-def lag_correlation_plot(means: list, stds: list, timesteps: list, title: str, freq: int, start: int = 0, end: int = None, output_filename: str = None):
+def lag_correlation_plot(corrs: np.ndarray, timesteps: np.ndarray, variables: list, title: str, output_filename: str = None):
+    colors = plt.cm.cividis(np.linspace(0, 1, len(variables)))
 
-    means = means[start:end:freq]
-    stds = stds[start:end:freq] 
-    timesteps = timesteps[start:end:freq]
-    
-    plt.plot(timesteps, means, linestyle='-', color = 'g')
-    plt.fill_between(timesteps, np.subtract(means, stds), np.add(means, stds), color='lightgreen')
+    for i,var in enumerate(variables):
+        plt.plot(timesteps, corrs[i], linestyle='-', color=colors[i], label=var)
     plt.xlabel('History (days)')
     plt.ylabel('Correlation coeff')
     plt.title(title)
     plt.tight_layout()
+    plt.legend()
     
     if output_filename:
         plt.savefig(output_filename, dpi=300, bbox_inches='tight')
