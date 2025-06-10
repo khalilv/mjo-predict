@@ -3,14 +3,14 @@ Temporal Fusion Transformer (TFT)
 -------
 """
 
-from typing import Union
+from typing import Union, Tuple, Dict, List
 
 import torch
 from torch import nn
 from torch.nn import LSTM as _LSTM
 
 from mjo.TFT import activations
-from mjo.TFT import normalization
+from mjo.utils import normalization
 
 from mjo.TFT.submodules import (
     _GateAddNorm,
@@ -28,16 +28,16 @@ class TFTModule(nn.Module):
         self,
         input_chunk_length: int,
         output_chunk_length: int,
-        output_dim: tuple[int, int],
-        variables_meta: dict[str, dict[str, list[str]]],
+        output_dim: Tuple[int, int],
+        variables_meta: Dict[str, Dict[str, List[str]]],
         num_static_components: int,
-        hidden_size: Union[int, list[int]],
+        hidden_size: Union[int, List[int]],
         lstm_layers: int,
         num_attention_heads: int,
         full_attention: bool,
         feed_forward: str,
         hidden_continuous_size: int,
-        categorical_embedding_sizes: dict[str, tuple[int, int]],
+        categorical_embedding_sizes: Dict[str, Tuple[int, int]],
         dropout: float,
         add_relative_index: bool,
         norm_type: Union[str, nn.Module],
@@ -328,42 +328,42 @@ class TFTModule(nn.Module):
         self._decoder_sparse_weights = None
 
     @property
-    def reals(self) -> list[str]:
+    def reals(self) -> List[str]:
         """
         List of all continuous variables in model
         """
         return self.variables_meta["model_config"]["reals_input"]
 
     @property
-    def static_variables(self) -> list[str]:
+    def static_variables(self) -> List[str]:
         """
         List of all static variables in model
         """
         return self.variables_meta["model_config"]["static_input"]
 
     @property
-    def numeric_static_variables(self) -> list[str]:
+    def numeric_static_variables(self) -> List[str]:
         """
         List of numeric static variables in model
         """
         return self.variables_meta["model_config"]["static_input_numeric"]
 
     @property
-    def categorical_static_variables(self) -> list[str]:
+    def categorical_static_variables(self) -> List[str]:
         """
         List of categorical static variables in model
         """
         return self.variables_meta["model_config"]["static_input_categorical"]
 
     @property
-    def encoder_variables(self) -> list[str]:
+    def encoder_variables(self) -> List[str]:
         """
         List of all encoder variables in model (excluding static variables)
         """
         return self.variables_meta["model_config"]["time_varying_encoder_input"]
 
     @property
-    def decoder_variables(self) -> list[str]:
+    def decoder_variables(self) -> List[str]:
         """
         List of all decoder variables in model (excluding static variables)
         """

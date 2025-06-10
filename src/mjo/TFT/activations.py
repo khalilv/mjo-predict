@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from darts.models.components.feed_forward import FeedForward
+from mjo.TFT.feed_forward import FeedForward
 
 # GLU Variants Improve Transformer
 # Shazeer, Noam, "GLU Variants Improve Transformer", 2020. arVix https://arxiv.org/abs/2002.05202

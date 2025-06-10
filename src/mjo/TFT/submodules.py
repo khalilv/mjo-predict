@@ -20,15 +20,15 @@ all copies or substantial portions of the Software.
 '
 """
 
-from typing import Optional, Union
+from typing import Optional, Union, Tuple, Dict, List
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from mjo.TFT.dropout import MonteCarloDropout
+from mjo.utils.dropout import MonteCarloDropout
 
-HiddenState = Union[tuple[torch.Tensor, torch.Tensor], torch.Tensor]
+HiddenState = Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]
 
 def get_embedding_size(n: int, max_size: int = 100) -> int:
     """
@@ -74,8 +74,8 @@ class _TimeDistributedEmbeddingBag(nn.EmbeddingBag):
 class _MultiEmbedding(nn.Module):
     def __init__(
         self,
-        embedding_sizes: dict[str, tuple[int, int]],
-        variable_names: list[str],
+        embedding_sizes: Dict[str, Tuple[int, int]],
+        variable_names: List[str],
     ):
         """Embedding layer for categorical variables including groups of categorical variables.
         Enabled for static and dynamic categories (i.e. 3 dimensions for batch x time x categories).
@@ -103,10 +103,10 @@ class _MultiEmbedding(nn.Module):
         return len(self.variable_names)
 
     @property
-    def output_size(self) -> Union[dict[str, int], int]:
+    def output_size(self) -> Union[Dict[str, int], int]:
         return {name: sizes[1] for name, sizes in self.embedding_sizes.items()}
 
-    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """
         Parameters
         ----------
@@ -377,13 +377,13 @@ class _GatedResidualNetwork(nn.Module):
 class _VariableSelectionNetwork(nn.Module):
     def __init__(
         self,
-        input_sizes: dict[str, int],
+        input_sizes: Dict[str, int],
         hidden_size: int,
-        input_embedding_flags: Optional[dict[str, bool]] = None,
+        input_embedding_flags: Optional[Dict[str, bool]] = None,
         dropout: float = 0.1,
         context_size: int = None,
-        single_variable_grns: Optional[dict[str, _GatedResidualNetwork]] = None,
-        prescalers: Optional[dict[str, nn.Linear]] = None,
+        single_variable_grns: Optional[Dict[str, _GatedResidualNetwork]] = None,
+        prescalers: Optional[Dict[str, nn.Linear]] = None,
         layer_norm: nn.Module = nn.LayerNorm,
     ):
         """
@@ -460,7 +460,7 @@ class _VariableSelectionNetwork(nn.Module):
     def num_inputs(self):
         return len(self.input_sizes)
 
-    def forward(self, x: dict[str, torch.Tensor], context: torch.Tensor = None):
+    def forward(self, x: Dict[str, torch.Tensor], context: torch.Tensor = None):
         if self.num_inputs > 1:
             # transform single variables
             var_outputs = []
@@ -555,7 +555,7 @@ class _InterpretableMultiHeadAttention(nn.Module):
             else:
                 torch.nn.init.zeros_(p)
 
-    def forward(self, q, k, v, mask=None) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, q, k, v, mask=None) -> Tuple[torch.Tensor, torch.Tensor]:
         heads = []
         attns = []
         vs = self.v_layer(v)

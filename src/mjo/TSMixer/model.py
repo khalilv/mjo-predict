@@ -27,8 +27,8 @@ from typing import Callable, Optional, Union
 import torch
 from torch import nn
 
-from mjo.TSMixer import normalization
-from mjo.TSMixer.dropout import MonteCarloDropout
+from mjo.utils import normalization
+from mjo.utils.dropout import MonteCarloDropout
 
 ACTIVATIONS = [
     "ReLU",
