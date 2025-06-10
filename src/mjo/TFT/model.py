@@ -23,7 +23,7 @@ from mjo.TFT.submodules import (
 GLU_FFN = ["GLU", "Bilinear", "ReGLU", "GEGLU", "SwiGLU", "ReLU", "GELU"]
 
 
-class TFTModule(nn.Module):
+class TFTModel(nn.Module):
     def __init__(
         self,
         input_chunk_length: int,
@@ -664,7 +664,7 @@ def main():
     }
 
     # create model instance
-    model = TFTModule(
+    model = TFTModel(
         input_chunk_length=input_chunk_length,
         output_chunk_length=output_chunk_length,
         output_dim=output_dim,
