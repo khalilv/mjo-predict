@@ -13,7 +13,7 @@ from optuna_integration import PyTorchLightningPruningCallback
 def objective(trial):
     
     # hyperparameters to optimize
-    hidden_size = 2 ** trial.suggest_int('hidden_continuous_exp', 5, 10)
+    hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 10)
     lstm_layers = trial.suggest_int('lstm_layers', 1, 4)
     num_attention_heads = trial.suggest_int('num_attention_heads', 2, 16, step=2)
     hidden_continuous_size = 2 ** trial.suggest_int('hidden_continuous_exp', 5, 10)
