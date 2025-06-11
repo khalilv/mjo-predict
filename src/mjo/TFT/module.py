@@ -150,7 +150,6 @@ class MJOForecastModule(LightningModule):
                 "categorical_input": []
             }
         }
-        print(self.variables_meta)
         self.net = TFTModel(
             input_chunk_length=self.input_chunk_length,
             output_chunk_length=self.output_chunk_length,
