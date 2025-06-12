@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import torch
+import os
 from torch.utils.data import IterableDataset
 
 class NPZReader(IterableDataset):
@@ -94,6 +95,7 @@ class Forecast(IterableDataset):
     def __init__(
         self, 
         dataset: NPZReader, 
+        forecast_dir: str = None,
         normalize_data: bool = False, 
         in_transforms = None, 
         out_transforms = None,
@@ -101,6 +103,7 @@ class Forecast(IterableDataset):
     ) -> None:
         super().__init__()
         self.dataset = dataset
+        self.forecast_dir = forecast_dir
         self.normalize_data = normalize_data
         self.in_transforms = in_transforms
         self.out_transforms = out_transforms
@@ -120,15 +123,26 @@ class Forecast(IterableDataset):
                     else:
                         out_data = torch.stack([torch.tensor([data[v][t + p] for p in predictions], dtype=torch.get_default_dtype()) for v in out_variables], dim=1)
                         out_timestamps = np.array([data['dates'][t + p] for p in predictions])
+
+                    # if forecast_dir is provided, only load samples with future forecasts
+                    if self.forecast_dir:
+                        forecast_npz_file = f"{str(data['dates'][t]).split('T')[0]}.npz"
+                        if os.path.exists(os.path.join(self.forecast_dir, forecast_npz_file)):
+                            forecast_npz_data = np.load(os.path.join(self.forecast_dir, forecast_npz_file))
+                            forecast_data = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in in_variables], dim=2)
+                            forecast_timestamps = np.array(forecast_npz_data['dates'])
+                            assert len(forecast_timestamps) == len(out_timestamps), f'Found mismatch between forecast length {len(forecast_timestamps)} and predict length {len(out_timestamps)}'
+                        else:
+                            continue
                     
                     #remove missing datapoints
                     if torch.isnan(in_data).any() or torch.isnan(out_data).any():
                         continue
-                
+
                     if self.normalize_data:
-                        yield self.in_transforms.normalize(in_data), self.out_transforms.normalize(out_data), in_variables, out_variables, in_timestamps, out_timestamps,
+                        yield self.in_transforms.normalize(in_data), self.out_transforms.normalize(out_data), self.in_transforms.normalize(forecast_data) if self.forecast_dir else None, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
                     else:
-                        yield in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps,
+                        yield in_data, out_data, forecast_data if self.forecast_dir else None, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
 
 
 class ShuffleIterableDataset(IterableDataset):
@@ -160,15 +174,19 @@ def collate_fn(batch):
     batch = list(zip(*batch)) 
     in_data = torch.stack(batch[0])
     out_data = torch.stack(batch[1])
-    in_variables = batch[2][0]
-    out_variables = batch[3][0]
-    in_timestamps = np.array(batch[4])
-    out_timestamps = np.array(batch[5])
+    forecast_data = torch.stack(batch[2])
+    in_variables = batch[3][0]
+    out_variables = batch[4][0]
+    in_timestamps = np.array(batch[5])
+    out_timestamps = np.array(batch[6])
+    forecast_timestamps = np.array(batch[7])
     return (
         in_data,
         out_data,
+        forecast_data,
         in_variables,
         out_variables,
         in_timestamps,
         out_timestamps,
+        forecast_timestamps
     )
