@@ -32,6 +32,19 @@ def format(forecast_ds):
     fc_ds = xr.Dataset(var_data)
     return fc_ds
 
+def walk_to_forecast_dir(root):
+    current_dir = root
+    while True:
+        subdirs = [d for d in os.listdir(current_dir) if os.path.isdir(os.path.join(current_dir, d))]
+        if 'member' in subdirs:
+            forecast_dir = os.path.join(current_dir, 'member')
+            break
+        elif len(subdirs) == 1:
+            current_dir = os.path.join(current_dir, subdirs[0])
+        else:
+            raise RuntimeError(f"Unexpected directory structure in {current_dir}: {subdirs}")
+    return forecast_dir
+
 def main():
 
     #reference period to use   
@@ -57,21 +70,15 @@ def main():
     gt_u200_data = raw_era5_ds['u_component_of_wind'].sel(level=200, drop=True).to_dataset(name='u200')
 
     forecast_root_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/'
-    for start_date in os.listdir(forecast_root_dir):
+    start_dates = sorted(os.listdir(forecast_root_dir))
+    stop_at = start_dates.index('20061215')
+    start_dates = start_dates[:stop_at + 1]
+
+    for start_date in start_dates:
         root = os.path.join(forecast_root_dir, start_date)
-        if os.path.isdir(root):
+        if os.path.isdir(root) and not start_date.startswith('.'):
             # walk down one subdirectory at a time until 'member' is found
-            current_dir = root
-            while True:
-                subdirs = [d for d in os.listdir(current_dir) if os.path.isdir(os.path.join(current_dir, d))]
-                
-                if 'member' in subdirs:
-                    forecast_dir = os.path.join(current_dir, 'member')
-                    break
-                elif len(subdirs) == 1:
-                    current_dir = os.path.join(current_dir, subdirs[0])
-                else:
-                    raise RuntimeError(f"Unexpected directory structure in {current_dir}: {subdirs}")
+            forecast_dir = walk_to_forecast_dir(root)
 
             for member in tqdm(range(51), f'Processing ensemble members for {forecast_dir}'):
                 member_str = f"{member:02d}"
