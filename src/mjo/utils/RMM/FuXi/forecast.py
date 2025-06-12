@@ -86,6 +86,7 @@ def main():
     stop_at = start_dates.index('20061215')
     start_dates = start_dates[:stop_at + 1]
 
+    forecast_regridder = None
     for start_date in start_dates:
         root = os.path.join(forecast_root_dir, start_date)
         if os.path.isdir(root) and not start_date.startswith('.'):
@@ -115,9 +116,10 @@ def main():
                 gt_u850_data_2p5d_slice = gt_u850_data_2p5d.sel(time=period)
                 gt_u200_data_2p5d_slice  = gt_u200_data_2p5d.sel(time=period)
 
-                # regrid to 2.5°               
-                forecast_regridder = xe.Regridder(forecast_ds, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True)
-                forecast_ds_2p5d = forecast_regridder(forecast_ds_2p5d)
+                # regrid to 2.5°
+                if not forecast_regridder:               
+                    forecast_regridder = xe.Regridder(forecast_ds, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True)
+                forecast_ds_2p5d = forecast_regridder(forecast_ds)
 
                 # get forecast data for required variables
                 forecast_olr_data_2p5d = (forecast_ds_2p5d['ttr'] * -1).to_dataset(name='olr')
