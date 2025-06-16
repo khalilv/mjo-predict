@@ -87,90 +87,92 @@ def main():
     start_dates = start_dates[:stop_at + 1]
 
     forecast_regridder = None
-    for start_date in tqdm(start_dates, 'Processing FuXi data'):
+    for start_date in start_dates:
         root = os.path.join(forecast_root_dir, start_date)
         if os.path.isdir(root) and not start_date.startswith('.'):
             # walk down one subdirectory at a time until 'member' is found
             forecast_dir = walk_to_forecast_dir(root)
-            member_datasets = []
 
-            for member in range(51):
+            for member in tqdm(range(51), f'Processing ensemble members for {forecast_dir}'):
                 member_str = f"{member:02d}"
+                
                 forecast_files = sorted(glob.glob(os.path.join(forecast_dir, member_str, "*.nc")))
-                member_ds = xr.open_mfdataset(forecast_files, combine='by_coords', parallel=False)
-                member_ds = member_ds.expand_dims({"member": [int(member)]})
-                member_datasets.append(member_ds)
-
-            # final concat across member dimension
-            forecast_ds = xr.concat(member_datasets, dim="member")
-            init_time = forecast_ds['time'].isel(time=0)
-            member_dir = os.path.join(save_dir, f'{str(init_time.time.values).split("T")[0]}')
-            forecast_ds = format(forecast_ds).load()
-            forecast_ds.close()
-
-            # regrid to 2.5°
-            if not forecast_regridder:               
-                forecast_regridder = xe.Regridder(forecast_ds, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True)
-            forecast_ds_2p5d = forecast_regridder(forecast_ds)
+                forecast_ds = xr.open_mfdataset(forecast_files, combine='by_coords', parallel=False)
+                init_time = forecast_ds['time'].isel(time=0)
+                
+                #create member directory if it doesnt exist
+                member_dir = os.path.join(save_dir, f'{str(init_time.time.values).split("T")[0]}')
+                os.makedirs(member_dir, exist_ok=True)
+                            
+                #format forecast_ds to (time, lat, lon) for each variable
+                forecast_ds = format(forecast_ds.load())  
+                forecast_ds.close()
             
-            #slide ground truth data for required period
-            gt_end_date = init_time
-            gt_start_date = gt_end_date - np.timedelta64(118, 'D')
-            period = slice(gt_start_date, gt_end_date)
-            gt_olr_data_2p5d_slice = gt_olr_data_2p5d.sel(time=period)
-            gt_u850_data_2p5d_slice = gt_u850_data_2p5d.sel(time=period)
-            gt_u200_data_2p5d_slice  = gt_u200_data_2p5d.sel(time=period)
+                #slide ground truth data for required period
+                gt_end_date = init_time
+                gt_start_date = gt_end_date - np.timedelta64(118, 'D')
+                period = slice(gt_start_date, gt_end_date)
+                gt_olr_data_2p5d_slice = gt_olr_data_2p5d.sel(time=period)
+                gt_u850_data_2p5d_slice = gt_u850_data_2p5d.sel(time=period)
+                gt_u200_data_2p5d_slice  = gt_u200_data_2p5d.sel(time=period)
 
-            # get forecast data for required variables
-            forecast_olr_data_2p5d = (forecast_ds_2p5d['ttr'] * -1).to_dataset(name='olr')
-            forecast_u850_data_2p5d = forecast_ds_2p5d['u850'].to_dataset(name='u850')
-            forecast_u200_data_2p5d = forecast_ds_2p5d['u250'].to_dataset(name='u200') #TODO Update either the ground truth to use U250 or wait until FuXi releases U200
+                # regrid to 2.5°
+                if not forecast_regridder:               
+                    forecast_regridder = xe.Regridder(forecast_ds, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True)
+                forecast_ds_2p5d = forecast_regridder(forecast_ds)
 
-            combined_olr_data_2p5d = xr.concat([gt_olr_data_2p5d_slice, forecast_olr_data_2p5d], dim='time')
-            combined_u850_data_2p5d = xr.concat([gt_u850_data_2p5d_slice, forecast_u850_data_2p5d], dim='time')
-            combined_u200_data_2p5d = xr.concat([gt_u200_data_2p5d_slice, forecast_u200_data_2p5d], dim='time')
+                # get forecast data for required variables
+                forecast_olr_data_2p5d = (forecast_ds_2p5d['ttr'] * -1).to_dataset(name='olr')
+                forecast_u850_data_2p5d = forecast_ds_2p5d['u850'].to_dataset(name='u850')
+                forecast_u200_data_2p5d = forecast_ds_2p5d['u250'].to_dataset(name='u200') #TODO Update either the ground truth to use U250 or wait until FuXi releases U200
 
-            olr_seasonal_cycle = seasonal_cycle_ds['olr'].sel(dayofyear=combined_olr_data_2p5d.time.dt.dayofyear)
-            u850_seasonal_cycle = seasonal_cycle_ds['u850'].sel(dayofyear=combined_u850_data_2p5d.time.dt.dayofyear)
-            u200_seasonal_cycle = seasonal_cycle_ds['u200'].sel(dayofyear=combined_u200_data_2p5d.time.dt.dayofyear)
+                combined_olr_data_2p5d = xr.concat([gt_olr_data_2p5d_slice, forecast_olr_data_2p5d], dim='time')
+                combined_u850_data_2p5d = xr.concat([gt_u850_data_2p5d_slice, forecast_u850_data_2p5d], dim='time')
+                combined_u200_data_2p5d = xr.concat([gt_u200_data_2p5d_slice, forecast_u200_data_2p5d], dim='time')
 
-            # subtract mean and fisrt three harmonics
-            olr_anomalies = combined_olr_data_2p5d - olr_seasonal_cycle
-            u850_anomalies = combined_u850_data_2p5d - u850_seasonal_cycle
-            u200_anomalies = combined_u200_data_2p5d - u200_seasonal_cycle
+                olr_seasonal_cycle = seasonal_cycle_ds['olr'].sel(dayofyear=combined_olr_data_2p5d.time.dt.dayofyear)
+                u850_seasonal_cycle = seasonal_cycle_ds['u850'].sel(dayofyear=combined_u850_data_2p5d.time.dt.dayofyear)
+                u200_seasonal_cycle = seasonal_cycle_ds['u200'].sel(dayofyear=combined_u200_data_2p5d.time.dt.dayofyear)
 
-            #detrend anomalies by removing 120d running mean
-            detrended_olr_anomalies = detrend_anomalies(olr_anomalies)
-            detrended_u850_anomalies = detrend_anomalies(u850_anomalies)
-            detrended_u200_anomalies = detrend_anomalies(u200_anomalies)    
+                # subtract mean and fisrt three harmonics
+                olr_anomalies = combined_olr_data_2p5d - olr_seasonal_cycle
+                u850_anomalies = combined_u850_data_2p5d - u850_seasonal_cycle
+                u200_anomalies = combined_u200_data_2p5d - u200_seasonal_cycle
 
-            #average over 15S-15N
-            detrended_olr_anomalies_latitude_band_avg = latitude_band_average(detrended_olr_anomalies)
-            detrended_u850_anomalies_latitude_band_avg = latitude_band_average(detrended_u850_anomalies)
-            detrended_u200_anomalies_latitude_band_avg = latitude_band_average(detrended_u200_anomalies)
+                #detrend anomalies by removing 120d running mean
+                detrended_olr_anomalies = detrend_anomalies(olr_anomalies)
+                detrended_u850_anomalies = detrend_anomalies(u850_anomalies)
+                detrended_u200_anomalies = detrend_anomalies(u200_anomalies)
 
-            #normalize each variable with factors calculated from reference period
-            detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg / normalization_factor_ds['olr']
-            detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg / normalization_factor_ds['u850']
-            detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg / normalization_factor_ds['u200']
+                #average over 15S-15N
+                detrended_olr_anomalies_latitude_band_avg = latitude_band_average(detrended_olr_anomalies)
+                detrended_u850_anomalies_latitude_band_avg = latitude_band_average(detrended_u850_anomalies)
+                detrended_u200_anomalies_latitude_band_avg = latitude_band_average(detrended_u200_anomalies)
 
-            #ensure timesteps are aligned
-            olr, u850, u200 = xr.align(
-                detrended_olr_anomalies_latitude_band_avg_norm,
-                detrended_u850_anomalies_latitude_band_avg_norm,
-                detrended_u200_anomalies_latitude_band_avg_norm,
-                join='inner'
-            )
+                #normalize each variable with factors calculated from reference period
+                detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg / normalization_factor_ds['olr']
+                detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg / normalization_factor_ds['u850']
+                detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg / normalization_factor_ds['u200']
 
-            #combine data
-            X = xr.concat([olr['olr'], u850['u850'], u200['u200']], dim='lon')  # (time, 3 × lon, members)  
+                #drop missing values
+                detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
+                detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
+                detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
 
-            for member in range(51):
-                member_str = f"{member:02d}"
+                #ensure timesteps are aligned
+                olr, u850, u200 = xr.align(
+                    detrended_olr_anomalies_latitude_band_avg_norm,
+                    detrended_u850_anomalies_latitude_band_avg_norm,
+                    detrended_u200_anomalies_latitude_band_avg_norm,
+                    join='inner'
+                )
+
+                #combine data
+                X = xr.concat([olr['olr'], u850['u850'], u200['u200']], dim='lon')  # (time, 3 × lon)  
 
                 #project data onto reference EOFs
-                RMM1 = X[:,:,member].values @ EOF_ds['EOF1'].values
-                RMM2 = X[:,:,member].values @ EOF_ds['EOF2'].values
+                RMM1 = X.values @ EOF_ds['EOF1'].values
+                RMM2 = X.values @ EOF_ds['EOF2'].values
 
                 #divive RMM indices by factors calculated from reference period
                 RMM1_norm = RMM1 / normalization_factor_ds['RMM1_std'].values
