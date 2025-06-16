@@ -103,6 +103,10 @@ def main():
                 #create member directory if it doesnt exist
                 member_dir = os.path.join(save_dir, f'{str(init_time.time.values).split("T")[0]}')
                 os.makedirs(member_dir, exist_ok=True)
+
+                if os.path.exists(os.path.join(member_dir, f'{member_str}.txt')):
+                    print(os.path.join(member_dir, f'{member_str}.txt') + ' already exists.')
+                    continue
                             
                 #format forecast_ds to (time, lat, lon) for each variable
                 forecast_ds = format(forecast_ds.load())  

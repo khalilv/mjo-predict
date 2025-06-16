@@ -103,7 +103,7 @@ def main():
         time=olr.time.values,
         RMM1=RMM1_norm,
         RMM2=RMM2_norm,
-        output_path=os.path.join(save_dir, 'rmm.txt')
+        filename=os.path.join(save_dir, 'rmm.txt')
     )
 
 
