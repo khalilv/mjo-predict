@@ -131,7 +131,6 @@ class Forecast(IterableDataset):
                             forecast_npz_data = np.load(os.path.join(self.forecast_dir, forecast_npz_file))
                             forecast_data = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in in_variables], dim=2)
                             forecast_timestamps = np.array(forecast_npz_data['dates'])
-                            ensemble_members = torch.tensor(np.arange(forecast_data.shape[0]), dtype =torch.get_default_dtype())
                             assert len(forecast_timestamps) == len(out_timestamps), f'Found mismatch between forecast length {len(forecast_timestamps)} and predict length {len(out_timestamps)}'
                             
                         else:
@@ -142,9 +141,9 @@ class Forecast(IterableDataset):
                         continue
 
                     if self.normalize_data:
-                        yield self.in_transforms.normalize(in_data), self.out_transforms.normalize(out_data), self.in_transforms.normalize(forecast_data) if self.forecast_dir else None, ensemble_members if self.forecast_dir else None, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
+                        yield self.in_transforms.normalize(in_data), self.out_transforms.normalize(out_data), self.in_transforms.normalize(forecast_data) if self.forecast_dir else None, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
                     else:
-                        yield in_data, out_data, forecast_data if self.forecast_dir else None, ensemble_members if self.forecast_dir else None, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
+                        yield in_data, out_data, forecast_data if self.forecast_dir else None, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
 
 
 class ShuffleIterableDataset(IterableDataset):
@@ -177,17 +176,15 @@ def collate_fn(batch):
     in_data = torch.stack(batch[0])
     out_data = torch.stack(batch[1])
     forecast_data = torch.stack(batch[2]) if batch[2][0] is not None else None
-    ensemble_members  = torch.stack(batch[3]) if batch[3][0] is not None else None
-    in_variables = batch[4][0]
-    out_variables = batch[5][0]
-    in_timestamps = np.array(batch[6])
-    out_timestamps = np.array(batch[7])
-    forecast_timestamps = np.array(batch[7]) if batch[8][0] is not None else None
+    in_variables = batch[3][0]
+    out_variables = batch[4][0]
+    in_timestamps = np.array(batch[5])
+    out_timestamps = np.array(batch[6])
+    forecast_timestamps = np.array(batch[7]) if batch[7][0] is not None else None
     return (
         in_data,
         out_data,
         forecast_data,
-        ensemble_members,
         in_variables,
         out_variables,
         in_timestamps,

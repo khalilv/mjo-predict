@@ -180,44 +180,32 @@ class MJOForecastModule(LightningModule):
 
         return timestamp_encodings
     
-    def normalize_ensemble_member_data(self, ensemble_members: torch.Tensor):
-        #(ensemble_members - mean(np.arange(51)) / std(np.arange(51)
-        return (ensemble_members - 25.0) / 14.719601443879744
-
-    def prep_input(self, in_data: torch.Tensor, forecast_data: Optional[torch.Tensor], ensemble_members: Optional[torch.Tensor], in_timestamps: np.ndarray, out_timestamps: np.ndarray, forecast_timestamps: Optional[np.ndarray]):
+    def prep_input(self, in_data: torch.Tensor, forecast_data: Optional[torch.Tensor], in_timestamps: np.ndarray, out_timestamps: np.ndarray, forecast_timestamps: Optional[np.ndarray]):
         
         in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
         out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
 
         if forecast_data is not None:
             assert (forecast_timestamps == out_timestamps).all(), 'Found mismatch between forecast timestamps and out timestamps'
-            _, E, _, _ = forecast_data.shape
-            in_data = in_data.unsqueeze(1).expand(-1, E, -1, -1).flatten(0, 1)
-            in_timestamp_encodings = in_timestamp_encodings.unsqueeze(1).expand(-1, E, -1, -1).flatten(0, 1)
-            out_timestamp_encodings = out_timestamp_encodings.unsqueeze(1).expand(-1, E, -1, -1).flatten(0, 1)
-            forecast_future = forecast_data.flatten(0, 1)
-            forecast_past = torch.zeros((in_data.shape[0], in_data.shape[1], forecast_future.shape[2]), device=self.device, dtype=self.dtype) #forecast is only known in the future so we set these to 0
+            forecast_data = forecast_data.permute(0, 2, 1, 3) # (B, T, E, V)
+            forecast_future = forecast_data.flatten(2, 3) # (B, T, E*V) flatten ensemble members to seperate variables
+            forecast_past = torch.zeros((forecast_future.shape[0], in_data.shape[1], forecast_future.shape[2]), device=self.device, dtype=self.dtype) #forecast is only known in the future so we set these to 0
             x_past =  torch.cat([in_data, in_timestamp_encodings, forecast_past], dim=-1)
             x_future = torch.cat([out_timestamp_encodings, forecast_future], dim=-1) 
-            x_static = self.normalize_ensemble_member_data(ensemble_members.unsqueeze(-1).flatten(0,1))
         else:
             x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
             x_future = out_timestamp_encodings
-            x_static = None
-            
+        
+        x_static = None    
         return (x_past, x_future, x_static)
 
     def training_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, ensemble_members, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        x_in = self.prep_input(in_data, forecast_data, ensemble_members, in_timestamps, out_timestamps, forecast_timestamps)
+        x_in = self.prep_input(in_data, forecast_data, in_timestamps, out_timestamps, forecast_timestamps)
         
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
-
-        if forecast_data is not None:
-            B, E, T, V = forecast_data.shape
-            out_data = out_data.unsqueeze(1).expand(-1, E, -1, -1).flatten(0, 1)
 
         batch_loss = self.train_mse(preds=pred_data, targets=out_data)
        
@@ -232,17 +220,13 @@ class MJOForecastModule(LightningModule):
         return batch_loss['mse_norm']
     
     def validation_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, ensemble_members, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        x_in = self.prep_input(in_data, forecast_data, ensemble_members, in_timestamps, out_timestamps, forecast_timestamps)
+        x_in = self.prep_input(in_data, forecast_data, in_timestamps, out_timestamps, forecast_timestamps)
         
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
-        if forecast_data is not None:
-            B, E, T, V = forecast_data.shape
-            pred_data = pred_data.unflatten(0, (B, E)).mean(dim=1) #monitor the ensemble mean for validation 
-        
         self.val_mse.update(preds=pred_data, targets=out_data)
         return
         
@@ -267,17 +251,13 @@ class MJOForecastModule(LightningModule):
             os.makedirs(self.output_dir, exist_ok=False)
 
     def test_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, ensemble_members, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
        
-        x_in = self.prep_input(in_data, forecast_data, ensemble_members, in_timestamps, out_timestamps, forecast_timestamps)
+        x_in = self.prep_input(in_data, forecast_data, in_timestamps, out_timestamps, forecast_timestamps)
 
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
-        if forecast_data is not None:
-            B, E, T, V = forecast_data.shape
-            pred_data = pred_data.unflatten(0, (B, E)).mean(dim=1) #monitor the ensemble mean for testing 
-        
         self.test_mse.update(preds=pred_data, targets=out_data)
        
         if self.save_outputs:

@@ -5,23 +5,6 @@ from tqdm import tqdm
 from mjo.utils.RMM.io import load_rmm_indices
 from mjo.utils.plot import correlation_scatter_plot
 
-def subset_rmm_data(df, start_year, end_year, compute_statistics):
-    
-    # ensure datetime index
-    assert isinstance(df.index, pd.DatetimeIndex), "DataFrame must have datetime index"
-
-    subset_df = df[(df.index.year >= start_year) & (df.index.year < end_year)]
-
-    # Compute normalization statistics on train only
-    if compute_statistics:
-        year_mean = subset_df.index.year.values.mean()
-        year_std = subset_df.index.year.values.std()
-        mean = subset_df[['RMM1', 'RMM2', 'amplitude']].mean()
-        std = subset_df[['RMM1', 'RMM2', 'amplitude']].std()
-        return subset_df, mean, std, year_mean, year_std
-    else:
-        return subset_df
-
 def main():
         
     forecast_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/RMM/FuXi/reference_period_1979-09-07_to_2001-12-31"
