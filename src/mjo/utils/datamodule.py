@@ -22,6 +22,8 @@ class MJOForecastDataModule(LightningDataModule):
         in_variables (list): List of input variables.
         out_variables (list): List of output variables.
         forecast_dir (str, optional): Root directory for forecast data
+        load_forecast_members (bool, optional): If true, will load all forecast ensemble members for training. If false, will only load ensemble mean. 
+            Defaults to False
         predictions (list, optional): List of predictions elements to include in output. 
             If provided must all be positive integers. Defaults to [] (current timestamp).
         history (list, optional): List of history elements to include in input. 
@@ -41,6 +43,7 @@ class MJOForecastDataModule(LightningDataModule):
         in_variables: list,
         out_variables: list,
         forecast_dir: str = None,
+        load_forecast_members: bool = False,
         predictions: list = [],
         history: list = [],
         filter_mjo_events: bool = False,
@@ -59,6 +62,7 @@ class MJOForecastDataModule(LightningDataModule):
         self.in_variables = in_variables
         self.out_variables = out_variables
         self.forecast_dir = forecast_dir
+        self.load_forecast_members = load_forecast_members
         self.predictions = predictions
         self.history = history
         self.filter_mjo_events = filter_mjo_events
@@ -148,6 +152,7 @@ class MJOForecastDataModule(LightningDataModule):
                         history=self.history,
                     ),
                     forecast_dir = self.forecast_dir,
+                    load_forecast_members = self.load_forecast_members,
                     normalize_data = self.normalize_data,
                     in_transforms=self.in_transforms,
                     out_transforms=self.out_transforms,
@@ -165,6 +170,7 @@ class MJOForecastDataModule(LightningDataModule):
                     overflow_file_paths=[self.train_file]
                 ),
                 forecast_dir = self.forecast_dir,
+                load_forecast_members = self.load_forecast_members,
                 normalize_data = self.normalize_data,
                 in_transforms=self.in_transforms,
                 out_transforms=self.out_transforms,
@@ -182,6 +188,7 @@ class MJOForecastDataModule(LightningDataModule):
                     overflow_file_paths=[self.train_file, self.val_file]
                 ),                    
                 forecast_dir = self.forecast_dir,
+                load_forecast_members = self.load_forecast_members,
                 normalize_data = self.normalize_data,
                 in_transforms=self.in_transforms,
                 out_transforms=self.out_transforms,

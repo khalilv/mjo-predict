@@ -96,6 +96,7 @@ class Forecast(IterableDataset):
         self, 
         dataset: NPZReader, 
         forecast_dir: str = None,
+        load_forecast_members: bool = False,
         normalize_data: bool = False, 
         in_transforms = None, 
         out_transforms = None,
@@ -104,10 +105,12 @@ class Forecast(IterableDataset):
         super().__init__()
         self.dataset = dataset
         self.forecast_dir = forecast_dir
+        self.load_forecast_members = load_forecast_members
         self.normalize_data = normalize_data
         self.in_transforms = in_transforms
         self.out_transforms = out_transforms
         self.filter_mjo_events = filter_mjo_events
+        self.forecast_suffix = 'members' if self.load_forecast_members else 'mean' 
       
     def __iter__(self):
         for data, in_variables, out_variables, predictions, history, predict_range, history_range in self.dataset:
@@ -126,7 +129,7 @@ class Forecast(IterableDataset):
 
                     # if forecast_dir is provided, only load samples with future forecasts
                     if self.forecast_dir:
-                        forecast_npz_file = f"{str(data['dates'][t]).split('T')[0]}.npz"
+                        forecast_npz_file = f"{str(data['dates'][t]).split('T')[0]}_{self.forecast_suffix}.npz"
                         if os.path.exists(os.path.join(self.forecast_dir, forecast_npz_file)):
                             forecast_npz_data = np.load(os.path.join(self.forecast_dir, forecast_npz_file))
                             forecast_data = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in in_variables], dim=2)
