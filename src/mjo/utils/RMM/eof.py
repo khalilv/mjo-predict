@@ -80,10 +80,10 @@ def main():
     reference_end = '2001-12-31'
     olr_file_path = '/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc'
     era5_file_path = '/glade/derecho/scratch/kvirji/DATA/era5_daily/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr'
-    save_dir = f'/glade/derecho/scratch/kvirji/DATA/MJO/EOF/reference_period_{reference_start}_to_{reference_end}'
+    save_dir = f'/glade/derecho/scratch/kvirji/DATA/MJO/U250/EOF'
     reverse_eof = True
-    negate_eof1 = False
-    negate_eof2 = True 
+    negate_eof1 = True
+    negate_eof2 = False
 
     os.makedirs(save_dir, exist_ok=True)
 

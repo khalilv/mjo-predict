@@ -16,8 +16,8 @@ def main():
     
     olr_file_path = '/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc'
     era5_file_path = '/glade/derecho/scratch/kvirji/DATA/era5_daily/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr'
-    reference_dir = f'/glade/derecho/scratch/kvirji/DATA/MJO/EOF/reference_period_{reference_start}_to_{reference_end}'
-    save_dir = f'/glade/derecho/scratch/kvirji/DATA/MJO/RMM/FuXi/reference_period_{reference_start}_to_{reference_end}'
+    reference_dir = f'/glade/derecho/scratch/kvirji/DATA/MJO/U200/EOF'
+    save_dir = f'/glade/derecho/scratch/kvirji/DATA/MJO/U200/FuXi'
 
     os.makedirs(save_dir, exist_ok=True)
 
@@ -46,8 +46,6 @@ def main():
 
     forecast_root_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/'
     start_dates = sorted(os.listdir(forecast_root_dir))
-    stop_at = start_dates.index('20061215')
-    start_dates = start_dates[:stop_at + 1]
 
     forecast_regridder = None
     for start_date in start_dates:

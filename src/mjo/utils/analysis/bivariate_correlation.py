@@ -70,11 +70,10 @@ def main():
     # ensemble forecasts
     ensemble_member_labels = []
     for label_idx, predict_dir in enumerate(ensemble_predict_dirs):
-        dataframes = []
-        max_lead_time = -1
         for member in ensemble_members:
+            dataframes = []
+            max_lead_time = -1
             member_str = f"{member:02d}"
-
             for filename in tqdm(os.listdir(predict_dir), f'Loading {member_str} data from {predict_dir}'):
                 member_file_path = os.path.join(predict_dir, filename, f'{member_str}.txt')
                 if os.path.exists(member_file_path):

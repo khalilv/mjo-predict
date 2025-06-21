@@ -7,7 +7,6 @@ from mjo.utils.RMM.FuXi.utils import walk_to_forecast_dir, format
 def main():
     root_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/"
     start_dates = sorted(os.listdir(root_dir))
-    start_dates = start_dates[3300:]
     for start_date in start_dates:
         root = os.path.join(root_dir, start_date)
         if os.path.isdir(root) and not start_date.startswith('.'):
