@@ -62,13 +62,13 @@ def objective(trial):
     cli.model.init_network()
 
     # pruning callback
-    pruning_callback = PyTorchLightningPruningCallback(trial, monitor='val/mse_norm')
+    pruning_callback = PyTorchLightningPruningCallback(trial, monitor='val/mse')
     cli.trainer.callbacks.append(pruning_callback)
 
     # train
     cli.trainer.fit(cli.model, datamodule=cli.datamodule)
 
-    return cli.trainer.callback_metrics['val/mse_norm'].item()
+    return cli.trainer.callback_metrics['val/mse'].item()
 
 def run_optimization(n_trials, root_dir):
     pruner = optuna.pruners.MedianPruner(
