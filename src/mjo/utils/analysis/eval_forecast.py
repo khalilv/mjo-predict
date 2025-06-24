@@ -58,18 +58,16 @@ def main():
 
     start_date = '2020-01-01'
     deterministic_dirs = [
-        '/glade/derecho/scratch/kvirji/mjo-predict/exps/TSMixer/FuXi_test2017-2021/ensemble_mean/no_hist/logs/version_0/outputs',
-        '/glade/derecho/scratch/kvirji/mjo-predict/exps/TSMixer/FuXi_test2017-2021/ensemble_mean/10d_hist/logs/version_0/outputs',
-        '/glade/derecho/scratch/kvirji/mjo-predict/exps/TSMixer/FuXi_test2017-2021/ensemble_members/10d_hist/logs/version_0/outputs'
+        '/glade/derecho/scratch/kvirji/mjo-predict/exps/TSMixer/FuXi/ensemble_mean/no_hist/logs/version_0/outputs',
     ]
-    deterministic_labels = ['TSMixer no hist', 'TSMixer 10d hist', 'TSMixer 10 hist ensemble']
+    deterministic_labels = ['TSMixer no hist']
     ensemble_dirs = ['/glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi']
     ensemble_labels = ['FuXi']
     ensemble_members = ['mean']
     ground_truth_path = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt"
-    output_dir = f'/glade/derecho/scratch/kvirji/mjo-predict/plots/'
+    output_dir = f'/glade/derecho/scratch/kvirji/mjo-predict/plots/2020-2021'
     os.makedirs(output_dir, exist_ok=True)
-    
+
     ground_truth = load_rmm_indices(ground_truth_path)
 
     correlations = []
