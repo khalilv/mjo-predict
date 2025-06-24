@@ -24,11 +24,11 @@ def subset_rmm_data(df, start_year, end_year, compute_statistics):
 def main():
         
     train_start_year = 1979
-    val_start_year = 2015
-    test_start_year = 2017
+    val_start_year = 2018
+    test_start_year = 2020
     test_end_year = 2022
-    input_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/U200/RMM/rmm.txt"
-    output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U200/preprocessed"
+    input_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt"
+    output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed"
     abm_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/ABM/rmm.74toRealtime.txt"
 
     os.makedirs(output_dir, exist_ok=True)

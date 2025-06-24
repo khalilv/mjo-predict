@@ -123,7 +123,7 @@ class MJOForecastModule(LightningModule):
         denormalize = self.denormalization.denormalize if self.denormalization else None
 
         self.train_mse = MSE(vars=self.out_variables, transforms=None, suffix='norm')
-        self.val_mse = MSE(vars=self.out_variables, transforms=None, suffix='norm')        
+        self.val_mse = MSE(vars=self.out_variables, transforms=denormalize, suffix=None)        
         self.test_mse = MSE(vars=self.out_variables, transforms=denormalize, suffix=None)
 
     def init_network(self):
