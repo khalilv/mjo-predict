@@ -39,7 +39,7 @@ def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplit
     else:
         plt.show()
 
-def phase_space_plot(pred_rmm1s, gt_rmm1, pred_rmm2s, gt_rmm2, labels, title=None, output_filename=None):
+def phase_space_plot(pred_rmm1s, gt_rmm1, pred_rmm2s, gt_rmm2, labels, gt_label, abm_rmm1=None, abm_rmm2=None, title=None, output_filename=None):
 
     def _add_region_labels():
         plt.text(0, -3.75, "Indian Ocean", ha='center', va='center', fontsize=9)
@@ -66,17 +66,23 @@ def phase_space_plot(pred_rmm1s, gt_rmm1, pred_rmm2s, gt_rmm2, labels, title=Non
 
     assert len(labels) == len(pred_rmm1s), 'Number of labels must match number of prediction sources'
     plt.figure(figsize=(8, 8))
-    colors = plt.cm.cividis(np.linspace(0, 1, len(labels)))
+    colors = plt.cm.tab10(np.linspace(0, 1, len(labels)))
     for i, label in enumerate(labels):
         plt.plot(pred_rmm1s[i], pred_rmm2s[i], color=colors[i], alpha=0.8, label=label)
         plt.plot(pred_rmm1s[i][0], pred_rmm2s[i][0], color=colors[i], marker='o')  # start
         for lt in range(5, len(pred_rmm1s[i]), 5):
             plt.plot(pred_rmm1s[i][lt], pred_rmm2s[i][lt], color=colors[i], marker='.')
 
-    plt.plot(gt_rmm1, gt_rmm2, color='black', linestyle='--', alpha=0.8, label='ABM')
+    plt.plot(gt_rmm1, gt_rmm2, color='black', linestyle='--', alpha=0.75, label=gt_label)
     plt.plot(gt_rmm1[0], gt_rmm2[0], color='black', marker='o')  # start
     for lt in range(5, len(gt_rmm1), 5):
             plt.plot(gt_rmm1[lt], gt_rmm2[lt], color='black', marker='.')
+    
+    if abm_rmm1 is not None and abm_rmm2 is not None:
+        plt.plot(abm_rmm1, abm_rmm2, color='lightgray', linestyle='--', alpha=0.75, label='ABM')
+        plt.plot(abm_rmm1[0], abm_rmm2[0], color='lightgray', marker='o')  # start
+        for lt in range(5, len(gt_rmm1), 5):
+                plt.plot(abm_rmm1[lt], abm_rmm2[lt], color='lightgray', marker='.')
 
     plt.axhline(0, color='gray', linewidth=0.5)
     plt.axvline(0, color='gray', linewidth=0.5)
