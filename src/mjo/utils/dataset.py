@@ -110,7 +110,6 @@ class Forecast(IterableDataset):
         self.in_transforms = in_transforms
         self.out_transforms = out_transforms
         self.filter_mjo_events = filter_mjo_events
-        self.forecast_suffix = 'members' if self.load_forecast_members else 'mean' 
       
     def __iter__(self):
         for data, in_variables, out_variables, predictions, history, predict_range, history_range in self.dataset:
@@ -129,13 +128,20 @@ class Forecast(IterableDataset):
 
                     # if forecast_dir is provided, only load samples with future forecasts
                     if self.forecast_dir:
-                        forecast_npz_file = f"{str(data['dates'][t]).split('T')[0]}_{self.forecast_suffix}.npz"
-                        if os.path.exists(os.path.join(self.forecast_dir, forecast_npz_file)):
-                            forecast_npz_data = np.load(os.path.join(self.forecast_dir, forecast_npz_file))
+                        forecast_mean_file = f"{str(data['dates'][t]).split('T')[0]}_mean.npz"
+                        if os.path.exists(os.path.join(self.forecast_dir, forecast_mean_file)):
+                            forecast_npz_data = np.load(os.path.join(self.forecast_dir, forecast_mean_file))
                             forecast_data = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in in_variables], dim=2)
                             forecast_timestamps = np.array(forecast_npz_data['dates'])
                             assert len(forecast_timestamps) == len(out_timestamps), f'Found mismatch between forecast length {len(forecast_timestamps)} and predict length {len(out_timestamps)}'
-                            
+                            if self.load_forecast_members:
+                                forecast_members_file = f"{str(data['dates'][t]).split('T')[0]}_members.npz"
+                                if os.path.exists(os.path.join(self.forecast_dir, forecast_members_file)):
+                                    forecast_npz_data = np.load(os.path.join(self.forecast_dir, forecast_members_file))
+                                    forecast_member_data = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in in_variables], dim=2)
+                                    forecast_data = torch.concatenate([forecast_data, forecast_member_data], dim=0)
+                                    forecast_member_timestamps = np.array(forecast_npz_data['dates'])
+                                    assert (forecast_timestamps == forecast_member_timestamps).all(), f"Found mismatch between forecast member timestamps and forecast mean timestamps for {str(data['dates'][t]).split('T')[0]}"     
                         else:
                             continue
                     
