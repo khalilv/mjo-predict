@@ -20,9 +20,9 @@ def objective(trial):
     add_relative_index = trial.suggest_categorical('add_relative_index', [True, False])
     full_attention = trial.suggest_categorical('full_attention', [True, False])
     dropout = trial.suggest_float('dropout', 0.1, 0.9, step=0.1)
-    lr = trial.suggest_float('lr', 1e-6, 1e-3, log=True)
-    beta_1 = trial.suggest_float("beta_1", 0.85, 0.99)
-    beta_2 = trial.suggest_float("beta_2", 0.95, 0.999)
+    lr = trial.suggest_float('lr', 1e-7, 1e-3, log=True)
+    beta_1 = trial.suggest_float("beta_1", 0.85, 0.99, step=0.01)
+    beta_2 = trial.suggest_float("beta_2", 0.95, 0.999, step=0.01)
     weight_decay = trial.suggest_float("weight_decay", 1e-7, 1e-2, log=True)
 
     # Set up CLI (without running)
@@ -62,7 +62,7 @@ def objective(trial):
     cli.model.init_network()
 
     # pruning callback
-    pruning_callback = PyTorchLightningPruningCallback(trial, monitor='val/mse_norm')
+    pruning_callback = PyTorchLightningPruningCallback(trial, monitor='val/mse')
     cli.trainer.callbacks.append(pruning_callback)
 
     # train

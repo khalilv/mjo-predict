@@ -5,7 +5,7 @@
 import os
 import torch
 import numpy as np
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, Optional, Union
 from pytorch_lightning import LightningModule
 from mjo.TFT.model import TFTModel
 from mjo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
@@ -135,7 +135,7 @@ class MJOForecastModule(LightningModule):
         denormalize = self.denormalization.denormalize if self.denormalization else None
 
         self.train_mse = MSE(vars=self.out_variables, transforms=None, suffix='norm')
-        self.val_mse = MSE(vars=self.out_variables, transforms=None, suffix='norm')
+        self.val_mse = MSE(vars=self.out_variables, transforms=denormalize, suffix=None)        
         self.test_mse = MSE(vars=self.out_variables, transforms=denormalize, suffix=None)
 
     def init_network(self):
@@ -202,24 +202,34 @@ class MJOForecastModule(LightningModule):
         timestamp_encodings = torch.cat([years.unsqueeze(-1), doy_encoding], dim=-1)
 
         return timestamp_encodings
-
-    def training_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps = batch
-
+    
+    def prep_input(self, in_data: torch.Tensor, forecast_data: Optional[torch.Tensor], in_timestamps: np.ndarray, out_timestamps: np.ndarray, forecast_timestamps: Optional[np.ndarray]):
+        
         in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
         out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
 
-        # fuxi_future = out_data
-        # fuxi_past = torch.zeros((in_data.shape[0], in_data.shape[1], out_data.shape[2]), device=self.device, dtype=self.dtype) #fuxi is only known in the future so we set these to 0
+        if forecast_data is not None:
+            assert (forecast_timestamps == out_timestamps).all(), 'Found mismatch between forecast timestamps and out timestamps'
+            forecast_data = forecast_data.permute(0, 2, 1, 3) # (B, T, E, V)
+            forecast_future = forecast_data.flatten(2, 3) # (B, T, E*V) flatten ensemble members to seperate variables
+            forecast_past = torch.zeros((forecast_future.shape[0], in_data.shape[1], forecast_future.shape[2]), device=self.device, dtype=self.dtype) #forecast is only known in the future so we set these to 0
+            x_past =  torch.cat([in_data, in_timestamp_encodings, forecast_past], dim=-1)
+            x_future = torch.cat([out_timestamp_encodings, forecast_future], dim=-1) 
+        else:
+            x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
+            x_future = out_timestamp_encodings
+        
+        x_static = None    
+        return (x_past, x_future, x_static)
 
-        x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
-        x_future = out_timestamp_encodings 
-        # x_past =  torch.cat([in_data, in_timestamp_encodings, fuxi_past], dim=-1) 
-        # x_future = torch.cat([out_timestamp_encodings, fuxi_future], dim=-1) 
-        x_static = None
+    def training_step(self, batch: Any, batch_idx: int):
+        in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        pred_data = self.net.forward(x_in=(x_past, x_future, x_static))
+        x_in = self.prep_input(in_data, forecast_data, in_timestamps, out_timestamps, forecast_timestamps)
+        
+        pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
+
         batch_loss = self.train_mse(preds=pred_data, targets=out_data)
        
         for key in batch_loss.keys():
@@ -233,22 +243,13 @@ class MJOForecastModule(LightningModule):
         return batch_loss['mse_norm']
     
     def validation_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps = batch
+        in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+
+        x_in = self.prep_input(in_data, forecast_data, in_timestamps, out_timestamps, forecast_timestamps)
         
-        in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
-        out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
-
-        # fuxi_future = out_data
-        # fuxi_past = torch.zeros((in_data.shape[0], in_data.shape[1], out_data.shape[2]), device=self.device, dtype=self.dtype) #fuxi is only known in the future so we set these to 0
-
-        x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
-        x_future = out_timestamp_encodings 
-        # x_past =  torch.cat([in_data, in_timestamp_encodings, fuxi_past], dim=-1) 
-        # x_future = torch.cat([out_timestamp_encodings, fuxi_future], dim=-1) 
-        x_static = None
-
-        pred_data = self.net.forward(x_in=(x_past, x_future, x_static))
+        pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
+
         self.val_mse.update(preds=pred_data, targets=out_data)
         return
         
@@ -267,29 +268,22 @@ class MJOForecastModule(LightningModule):
         self.val_mse.reset()
         return loss_dict
     
+    
     def on_test_epoch_start(self):
         if self.save_outputs:
             self.output_dir = f'{self.logger.log_dir}/outputs/'
             os.makedirs(self.output_dir, exist_ok=False)
 
     def test_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, in_variables, out_variables, in_timestamps, out_timestamps = batch
+        in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+       
+        x_in = self.prep_input(in_data, forecast_data, in_timestamps, out_timestamps, forecast_timestamps)
 
-        in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
-        out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
-
-        # fuxi_future = out_data
-        # fuxi_past = torch.zeros((in_data.shape[0], in_data.shape[1], out_data.shape[2]), device=self.device, dtype=self.dtype) #fuxi is only known in the future so we set these to 0
-
-        x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
-        x_future = out_timestamp_encodings 
-        # x_past =  torch.cat([in_data, in_timestamp_encodings, fuxi_past], dim=-1) 
-        # x_future = torch.cat([out_timestamp_encodings, fuxi_future], dim=-1) 
-        x_static = None
-
-        pred_data = self.net.forward(x_in=(x_past, x_future, x_static))
+        pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
+
         self.test_mse.update(preds=pred_data, targets=out_data)
+       
         if self.save_outputs:
             pred_data = self.denormalization.denormalize(pred_data)
             pred_data = pred_data.cpu().numpy()
