@@ -6,7 +6,8 @@ from datetime import datetime
 from mjo.utils.RMM.io import load_rmm_indices
 from mjo.utils.plot import (
     bivariate_correlation_vs_lead_time_plot,
-    bivariate_mse_vs_lead_time_plot
+    bivariate_mse_vs_lead_time_plot,
+    bivariate_mse_vs_init_date_plot
 )
 
 def compute_bcorr(predict_rmm1, ground_truth_rmm1, predict_rmm2, ground_truth_rmm2):
@@ -37,7 +38,7 @@ def load_forecast(predict_dir, start_date, member=None):
         df = load_rmm_indices(filepath)
         max_lt = max(max_lt, len(df))
         dataframes.append(df)
-    return dataframes, max_lt
+    return dataframes, max_lt, dates
 
 
 def compute_metric_across_leads(dataframes, max_lt, ground_truth_df, metric_fn):
@@ -53,6 +54,19 @@ def compute_metric_across_leads(dataframes, max_lt, ground_truth_df, metric_fn):
         result = metric_fn(pred_df.RMM1.values, truth_df.RMM1.values, pred_df.RMM2.values, truth_df.RMM2.values)
         results.append(result)
     return np.array(results)
+
+def compute_metric_across_dfs(dataframes, max_lt, ground_truth_df, metric_fn):
+    results = []
+    for df in tqdm(dataframes, 'Computing per-dataframe metric'):
+        truths = []
+        for lt in range(max_lt):
+            if lt < len(df):
+                truths.append(ground_truth_df.loc[df.index[lt]])
+        truth_df = pd.DataFrame(truths)
+        result = metric_fn(df.RMM1.values, truth_df.RMM1.values, df.RMM2.values, truth_df.RMM2.values)
+        results.append(result)
+    return np.array(results)
+
 
 def main():
 
@@ -74,26 +88,38 @@ def main():
     phase_errors = []
     amplitude_errors = []
     max_lead_times = []
+
+    bmse_per_init_dates = []
+    init_dates = []
+
     for predict_dir in deterministic_dirs:
-        dfs, max_lt = load_forecast(predict_dir, start_date)
+        dfs, max_lt, date_strs = load_forecast(predict_dir, start_date)
         bcorr = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bcorr)
-        bmse = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bmse)
+        bmse = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bmse).T
+        bmse_per_init_date = compute_metric_across_dfs(dfs, max_lt, ground_truth, compute_bmse).T
+
         correlations.append(bcorr)
-        amplitude_errors.append(bmse.T[0])
-        phase_errors.append(bmse.T[1])
+        amplitude_errors.append(bmse[0])
+        phase_errors.append(bmse[1])
         max_lead_times.append(max_lt)
-    
+        init_dates.append([datetime.strptime(d, "%Y-%m-%d.txt") for d in date_strs])
+        bmse_per_init_dates.append(bmse_per_init_date[0] + bmse_per_init_date[1])
+
     ensemble_member_labels = []
     for label_idx, predict_dir in enumerate(ensemble_dirs):
         for member in ensemble_members:
-            dfs, max_lt = load_forecast(predict_dir, start_date, member)
+            dfs, max_lt, date_strs = load_forecast(predict_dir, start_date, member)
             bcorr = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bcorr)
-            bmse = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bmse)
+            bmse = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bmse).T
+            bmse_per_init_date = compute_metric_across_dfs(dfs, max_lt, ground_truth, compute_bmse).T
+
             correlations.append(bcorr)
-            amplitude_errors.append(bmse.T[0])
-            phase_errors.append(bmse.T[1])
+            amplitude_errors.append(bmse[0])
+            phase_errors.append(bmse[1])
             max_lead_times.append(max_lt)
             ensemble_member_labels.append(f'{ensemble_labels[label_idx]} {member}')
+            init_dates.append([datetime.strptime(d, "%Y-%m-%d") for d in date_strs])
+            bmse_per_init_dates.append(bmse_per_init_date[0] + bmse_per_init_date[1])
 
     
     bivariate_correlation_vs_lead_time_plot(
@@ -109,6 +135,13 @@ def main():
         bmsep=phase_errors,
         labels=deterministic_labels + ensemble_member_labels,
         output_filename=os.path.join(output_dir, 'bmse.png')
+    )
+
+    bivariate_mse_vs_init_date_plot(
+        init_dates=init_dates,
+        bmse=bmse_per_init_dates,
+        labels=deterministic_labels + ensemble_member_labels,
+        output_filename=os.path.join(output_dir, 'bmse_init_date.png')
     )
 
 

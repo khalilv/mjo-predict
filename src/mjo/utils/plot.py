@@ -146,6 +146,25 @@ def bivariate_mse_vs_lead_time_plot(lead_times, bmsea, bmsep, labels, output_fil
     else:
         plt.show()
 
+def bivariate_mse_vs_init_date_plot(init_dates, bmse, labels, output_filename=None):
+    assert len(bmse) == len(labels), 'Number of labels must match number of bmse sources'
+    assert len(init_dates) == len(bmse), 'Number of bmse sources must match number of init dates'
+
+    colors = plt.cm.cividis(np.linspace(0, 1, len(labels)))
+    plt.figure(figsize=(8, 5))
+    for i, label in enumerate(labels):
+        plt.plot(init_dates[i], bmse[i], color=colors[i], linestyle='-', label=f'{label}')
+    plt.xlabel('Date')
+    plt.ylabel('Bivariate Mean Squared Error')
+    plt.title('Bivariate Mean Squared Error vs Init Date')
+    plt.legend()
+    plt.tight_layout()
+    if output_filename:
+        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
 
 def lag_correlation_plot(corrs: np.ndarray, timesteps: np.ndarray, variables: list, title: str, output_filename: str = None):
     colors = plt.cm.cividis(np.linspace(0, 1, len(variables)))
