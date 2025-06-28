@@ -123,8 +123,11 @@ class MJOForecastModule(LightningModule):
         denormalize = self.denormalization.denormalize if self.denormalization else None
 
         self.train_mse = MSE(vars=self.out_variables, transforms=None, suffix='norm')
-        self.val_mse = MSE(vars=self.out_variables, transforms=denormalize, suffix=None)        
+        self.train_mae = MAE(vars=self.out_variables, transforms=None, suffix='norm')
+        self.val_mse = MSE(vars=self.out_variables, transforms=denormalize, suffix=None)
+        self.val_mae = MAE(vars=self.out_variables, transforms=denormalize, suffix=None)        
         self.test_mse = MSE(vars=self.out_variables, transforms=denormalize, suffix=None)
+        self.test_mae = MAE(vars=self.out_variables, transforms=denormalize, suffix=None)
 
     def init_network(self):
         self.net = TSMixerX(
@@ -207,8 +210,10 @@ class MJOForecastModule(LightningModule):
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
-        batch_loss = self.train_mse(preds=pred_data, targets=out_data)
-       
+        batch_loss_mse = self.train_mse(preds=pred_data, targets=out_data)
+        batch_loss_mae = self.train_mae(preds=pred_data, targets=out_data)
+        batch_loss = {**batch_loss_mae, **batch_loss_mse}
+
         for key in batch_loss.keys():
             self.log(
                 "train/" + key,
@@ -217,7 +222,8 @@ class MJOForecastModule(LightningModule):
             )
 
         self.train_mse.reset()
-        return batch_loss['mse_norm']
+        self.train_mae.reset()
+        return batch_loss['mae_norm']
     
     def validation_step(self, batch: Any, batch_idx: int):
         in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
@@ -228,13 +234,15 @@ class MJOForecastModule(LightningModule):
         pred_data = pred_data.squeeze(dim=-1)
 
         self.val_mse.update(preds=pred_data, targets=out_data)
+        self.val_mae.update(preds=pred_data, targets=out_data)
         return
         
     def on_validation_epoch_end(self):
         val_mse = self.val_mse.compute()
+        val_mae = self.val_mae.compute()
                
         #scalar metrics
-        loss_dict = {**val_mse}
+        loss_dict = {**val_mse, **val_mae}
         for key in loss_dict.keys():
             self.log(
                 "val/" + key,
@@ -243,6 +251,7 @@ class MJOForecastModule(LightningModule):
                 sync_dist=True
             )
         self.val_mse.reset()
+        self.val_mae.reset()
         return loss_dict
     
     def on_test_epoch_start(self):
@@ -259,6 +268,7 @@ class MJOForecastModule(LightningModule):
         pred_data = pred_data.squeeze(dim=-1)
 
         self.test_mse.update(preds=pred_data, targets=out_data)
+        self.test_mae.update(preds=pred_data, targets=out_data)
        
         if self.save_outputs:
             pred_data = self.denormalization.denormalize(pred_data)
@@ -276,9 +286,10 @@ class MJOForecastModule(LightningModule):
     
     def on_test_epoch_end(self):
         test_mse = self.test_mse.compute()
+        test_mae = self.test_mae.compute()
                
         #scalar metrics
-        loss_dict = {**test_mse}
+        loss_dict = {**test_mse, **test_mae}
         for key in loss_dict.keys():
             self.log(
                 "test/" + key,
@@ -287,6 +298,7 @@ class MJOForecastModule(LightningModule):
                 sync_dist=True
             )
         self.test_mse.reset()
+        self.test_mae.reset()
         return loss_dict
 
     #optimizer definition - will be used to optimize the network
