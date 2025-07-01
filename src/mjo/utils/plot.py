@@ -107,6 +107,77 @@ def phase_space_plot(pred_rmm1s, gt_rmm1, pred_rmm2s, gt_rmm2, labels, gt_label,
     else:
         plt.show()
 
+def phase_space_composite_plot(pred_composites, gt_composites, labels, gt_label, abm_composites=None, title=None, output_filename=None):
+
+    def _add_region_labels():
+        plt.text(0, -1.75, "Indian Ocean", ha='center', va='center', fontsize=9)
+        plt.text(1.75, 0, "Maritime Continent", ha='center', va='center', fontsize=9, rotation=-90)
+        plt.text(0, 1.75, "Western Pacific", ha='center', va='center', fontsize=9)
+        plt.text(-1.75, 0, "Western Hem.& Africa", ha='center', va='center', fontsize=9, rotation=90)
+
+
+    def _draw_phase_wedges():
+        r = math.sqrt(8)
+        labels = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8']
+
+        for i in range(8):
+            angle = (5 + i) * np.pi / 4  
+            x = np.cos(angle)
+            y = np.sin(angle)
+            plt.plot([0, r * x], [0, r * y], color='lightgray', lw=0.8, zorder=0)
+
+        for i, label in enumerate(labels):
+            angle = (4.5 + i) * np.pi / 4
+            x = 2 * np.cos(angle)
+            y = 2 * np.sin(angle)
+            plt.text(x, y, label, ha='center', va='center', fontsize=9, color='gray')
+
+    assert len(labels) == len(pred_composites), 'Number of labels must match number of prediction sources'
+    plt.figure(figsize=(8, 8))
+    colors = plt.cm.tab10(np.linspace(0, 1, len(labels)))
+    for i, label in enumerate(labels):
+        for _, (rmm1, rmm2) in pred_composites[i].items():
+            plt.plot(rmm1, rmm2, color=colors[i], alpha=0.8, label=label)
+            plt.plot(rmm1[0], rmm2[0], color=colors[i], marker='o')  # start
+            for lt in range(5, len(rmm1), 5):
+                plt.plot(rmm1[lt], rmm2[lt], color=colors[i], marker='.')
+
+    for _, (rmm1, rmm2) in gt_composites.items():
+        plt.plot(rmm1, rmm2, color='black', linestyle='--', alpha=0.75, label=gt_label)
+        plt.plot(rmm1[0], rmm2[0], color='black', marker='o')  # start
+        for lt in range(5, len(rmm1), 5):
+                plt.plot(rmm1[lt], rmm2[lt], color='black', marker='.')
+    
+    if abm_composites is not None:
+        for _, (rmm1, rmm2) in abm_composites.items():
+            plt.plot(rmm1, rmm2, color='lightgray', linestyle='--', alpha=0.75, label='ABM')
+            plt.plot(rmm1[0], rmm2[0], color='lightgray', marker='o')  # start
+            for lt in range(5, len(rmm1), 5):
+                    plt.plot(rmm1[lt], rmm2[lt], color='lightgray', marker='.')
+
+    plt.axhline(0, color='gray', linewidth=0.5)
+    plt.axvline(0, color='gray', linewidth=0.5)
+    _draw_phase_wedges()
+    _add_region_labels()
+
+    plt.xlabel("RMM1")
+    plt.ylabel("RMM2")
+    plt.title(title if title else f"Phase space composite diagram")
+    plt.xlim(-2, 2)
+    plt.ylim(-2, 2)
+    plt.gca().set_aspect('equal')
+
+    # prevent duplicate legend entries
+    handles, labels = plt.gca().get_legend_handles_labels()
+    unique = dict(zip(labels, handles))
+    plt.legend(unique.values(), unique.keys())
+    plt.tight_layout()
+    if output_filename:
+        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
 def bivariate_correlation_vs_lead_time_plot(lead_times, correlations, labels, output_filename=None):
     assert len(correlations) == len(labels), 'Number of labels must match number of correlation sources'
     
