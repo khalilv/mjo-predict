@@ -100,14 +100,14 @@ def main():
     gt_composites_per_dir = []
 
     for dir in predict_dirs:
-        pred_composites, gt_composites = compute_composite_by_phase(dir, gt_df, member=None, trajectory_length=trajectory_length, window=smoothing_window)
+        pred_composites, gt_composites = compute_composite_by_phase(dir, gt_df, member=None, trajectory_length=trajectory_length, window=smoothing_window, start_date=start_date)
         pred_composites_per_dir.append(pred_composites)
         gt_composites_per_dir.append(gt_composites)
     
     ensemble_member_labels = []
     for i, dir in enumerate(ensemble_dirs):
         for member in ensemble_members:
-            pred_composites, gt_composites = compute_composite_by_phase(dir, gt_df, member=member, trajectory_length=trajectory_length, window=smoothing_window)
+            pred_composites, gt_composites = compute_composite_by_phase(dir, gt_df, member=member, trajectory_length=trajectory_length, window=smoothing_window, start_date=start_date)
             pred_composites_per_dir.append(pred_composites)
             gt_composites_per_dir.append(gt_composites)
             ensemble_member_labels.append(f'{ensemble_labels[i]} {member}')
