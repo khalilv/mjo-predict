@@ -172,6 +172,7 @@ def save_like(output, input, member, lead_time, save_dir=""):
                 lon=input.lon,
             )
         ).astype(np.float32)
+        ds = ds.sel(channel=['u250', 'u200', 'u850', 'ttr'])
         print_dataarray(ds)
         save_name = os.path.join(save_dir, f'{lead_time:02d}.nc')
         ds.to_netcdf(save_name)
@@ -258,78 +259,59 @@ def run_inference(
 
 
 def main():
-    start_date = '1979-01-01'
-    end_date = '1980-12-31'
+    start_date = '1981-01-01'
+    end_date = '1982-12-31'
     wb2_ds = load_wb2_data('/glade/derecho/scratch/kvirji/DATA/era5_daily/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr')
     olr_ds = load_olr_data('/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc')
     u100_ds = load_cds_data('/glade/derecho/scratch/kvirji/DATA/100u')
-    mask = xr.open_dataarray("/glade/derecho/scratch/kvirji/FuXi-S2S/data/mask.nc")
+    v100_ds = load_cds_data('/glade/derecho/scratch/kvirji/DATA/100v')
+    # mask = xr.open_dataarray("/glade/derecho/scratch/kvirji/FuXi-S2S/data/mask.nc")
 
     model = "/glade/derecho/scratch/kvirji/mjo-predict/pretrained_weights/model-1.0/fuxi_s2s.onnx"
     device = "cpu"
-    total_steps = 42
-    total_members = 1
-    save_dir = ""
+    total_steps = 60
+    total_members = 51
+    save_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/"
 
     wb2_ds = slice_to(wb2_ds, start_date, end_date)
     olr_ds = slice_to(olr_ds, start_date, end_date)
     u100_ds = slice_to(u100_ds, start_date, end_date)
-
+    v100_ds = slice_to(v100_ds, start_date, end_date)
 
     olr_ds = regrid_to(olr_ds, wb2_ds.lat, wb2_ds.lon)
     u100_ds = regrid_to(u100_ds, wb2_ds.lat, wb2_ds.lon)
+    v100_ds = regrid_to(v100_ds, wb2_ds.lat, wb2_ds.lon)
 
     wb2_ds['top_net_thermal_radiation'] = -olr_ds['olr']
     wb2_ds['100m_u_component_of_wind'] = u100_ds['u100']
-    wb2_ds['100m_v_component_of_wind'] = u100_ds['u100'] #update once data is downloaded
+    wb2_ds['100m_v_component_of_wind'] = v100_ds['v100']
     
     ds = clean(wb2_ds)
     input = format(ds)
-    
+    input = input.sel(lat=input.lat[::-1])
+
     print_dataarray(input)
 
     start = time.perf_counter()
     model = load_model(model, device)
     print(f'FuXi took {time.perf_counter() - start:.2f} sec to load.')
 
-    input = input.isel(time=slice(0, 2))
-    input = input.sel(lat=input.lat[::-1])
-    run_inference(
-        model, 
-        input, 
-        total_steps, 
-        total_members,  
-        save_dir=save_dir
-    )
+
+    for t in range(1, len(input.time)):
+        in_data = input.isel(time=slice(t-1, t+1))
+        hist_time = pd.to_datetime(in_data.time.values[-2])
+        init_time = pd.to_datetime(in_data.time.values[-1])
+        if init_time - hist_time == pd.Timedelta(days=1):
+            init_time_str = "".join(str(init_time).split(' ')[0].split('-'))
+            os.makedirs(os.path.join(save_dir, init_time_str), exist_ok=True)
+            run_inference(
+                model, 
+                in_data, 
+                total_steps, 
+                total_members,  
+                save_dir=os.path.join(save_dir, init_time_str)
+            )
   
 
 if __name__ == "__main__":
     main()
-    # model = "/glade/derecho/scratch/kvirji/mjo-predict/pretrained_weights/model-1.0/fuxi_s2s.onnx"
-    # input_dir = "/glade/derecho/scratch/kvirji/FuXi-S2S/data/sample"
-    # device = "cpu"
-    # save_dir = ""
-    # total_step = 42
-    # total_member = 1
-
-
-    # input = make_input(input_dir)
-    # input.to_netcdf("/glade/derecho/scratch/kvirji/FuXi-S2S/data/input.nc")
-
-    # mask = xr.open_dataarray("/glade/derecho/scratch/kvirji/FuXi-S2S/data/mask.nc")
-    # input = land_to_nan(input, mask)    
-    # print_dataarray(input)        
-
-    # print(f'Load FuXi ...')       
-    # start = time.perf_counter()
-    # model = load_model(model, device)
-    # input_names = [input.name for input in model.get_inputs()]
-    # print(f'Load FuXi take {time.perf_counter() - start:.2f} sec')
-
-    # run_inference(
-    #     model, 
-    #     input, 
-    #     total_step, 
-    #     total_member,  
-    #     save_dir=save_dir
-    # )
