@@ -173,7 +173,7 @@ def save_like(output, input, member, lead_time, save_dir=""):
             )
         ).astype(np.float32)
         ds = ds.sel(channel=['u250', 'u200', 'u850', 'ttr'])
-        print_dataarray(ds)
+        # print_dataarray(ds)
         save_name = os.path.join(save_dir, f'{lead_time:02d}.nc')
         ds.to_netcdf(save_name)
 
@@ -207,21 +207,21 @@ def run_inference(
     input, 
     total_step, 
     total_member, 
+    time_strs,
     save_dir=""
 ):
     input_names = [input.name for input in model.get_inputs()]
-    hist_time = pd.to_datetime(input.time.values[-2])
-    init_time = pd.to_datetime(input.time.values[-1])
-    assert init_time - hist_time == pd.Timedelta(days=1)
+    # hist_time = pd.to_datetime(input.time.values[-2])
+    # init_time = pd.to_datetime(input.time.values[-1])
+    # assert init_time - hist_time == pd.Timedelta(days=1)
     
     lat = input.lat.values 
     lon = input.lon.values 
-    batch = input.values[None] 
+    batch = input.values
     if batch.shape[3] > batch.shape[4]:
         batch = batch.swapaxes(3,4) #(B, T, V, H, W)
     
     assert lat[0] == 90 and lat[-1] == -90
-    print(f'Model initial Time: {init_time.strftime(("%Y%m%d%H"))}')
     print(f"Region: {lat[0]:.2f} ~ {lat[-1]:.2f}, {lon[0]:.2f} ~ {lon[-1]:.2f}")
 
     for member in range(total_member):
@@ -237,10 +237,10 @@ def run_inference(
             if "step" in input_names:
                 inputs['step'] = np.array([step], dtype=np.float32)
 
-            if "doy" in input_names:
-                valid_time = init_time + pd.Timedelta(days=step)
-                doy = min(365, valid_time.day_of_year)/365 
-                inputs['doy'] = np.array([doy], dtype=np.float32)
+            # if "doy" in input_names:
+            #     valid_time = init_time + pd.Timedelta(days=step)
+            #     doy = min(365, valid_time.day_of_year)/365 
+            #     inputs['doy'] = np.array([doy], dtype=np.float32)
 
             istart = time.perf_counter()
             new_input, = model.run(None, inputs)
@@ -248,7 +248,10 @@ def run_inference(
             step_time = time.perf_counter() - istart
 
             print(f"member: {member:02d}, step {step+1:02d}, step_time: {step_time:.3f} sec")
-            save_like(output, input, member, lead_time, save_dir)
+            for b in range(output.shape[0]):
+                save = os.path.join(save_dir, time_strs[b])
+                os.makedirs(save, exist_ok=True)
+                save_like(output[b:b+1], input, member, lead_time, save)
             
             if step > total_step:
                 break
@@ -256,11 +259,37 @@ def run_inference(
         run_time = time.perf_counter() - start
         print(f'Inference member done, take {run_time:.2f} sec')
 
+def batch_input(input, batch_size):
+    batch = []
+    init_time_strs = []
+    time_values = input.time.values
+
+    for i in range(1, len(time_values)):
+        t0 = pd.to_datetime(time_values[i - 1])
+        t1 = pd.to_datetime(time_values[i])
+        if t1 - t0 != pd.Timedelta(days=1):
+            continue
+
+        # Slice two time steps
+        sample = input.isel(time=slice(i - 1, i + 1))  # shape (2, C, H, W)
+        batch.append(sample)
+        init_time_strs.append("".join(str(t1.date()).split('-')))
+
+        # once batch_size is reached, yield the batch
+        if len(batch) == batch_size:
+            # stack into one batch
+            yield xr.concat(batch, dim='batch'), init_time_strs
+            batch = []
+            init_time_strs = []
+
+    # yield remaining batch if any
+    if batch:
+        yield xr.concat(batch, dim='batch'), init_time_strs
 
 
 def main():
-    start_date = '1981-01-01'
-    end_date = '1982-12-31'
+    start_date = '1990-01-01'
+    end_date = '1990-12-31'
     wb2_ds = load_wb2_data('/glade/derecho/scratch/kvirji/DATA/era5_daily/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr')
     olr_ds = load_olr_data('/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc')
     u100_ds = load_cds_data('/glade/derecho/scratch/kvirji/DATA/100u')
@@ -268,7 +297,8 @@ def main():
     # mask = xr.open_dataarray("/glade/derecho/scratch/kvirji/FuXi-S2S/data/mask.nc")
 
     model = "/glade/derecho/scratch/kvirji/mjo-predict/pretrained_weights/model-1.0/fuxi_s2s.onnx"
-    device = "cpu"
+    device = "cuda"
+    batch_size = 1
     total_steps = 60
     total_members = 51
     save_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/"
@@ -296,21 +326,16 @@ def main():
     model = load_model(model, device)
     print(f'FuXi took {time.perf_counter() - start:.2f} sec to load.')
 
-
-    for t in range(1, len(input.time)):
-        in_data = input.isel(time=slice(t-1, t+1))
-        hist_time = pd.to_datetime(in_data.time.values[-2])
-        init_time = pd.to_datetime(in_data.time.values[-1])
-        if init_time - hist_time == pd.Timedelta(days=1):
-            init_time_str = "".join(str(init_time).split(' ')[0].split('-'))
-            os.makedirs(os.path.join(save_dir, init_time_str), exist_ok=True)
-            run_inference(
-                model, 
-                in_data, 
-                total_steps, 
-                total_members,  
-                save_dir=os.path.join(save_dir, init_time_str)
-            )
+    for batch, time_strs in batch_input(input, batch_size=batch_size):
+        print('Processing: ', time_strs)
+        run_inference(
+            model, 
+            batch, 
+            total_steps, 
+            total_members,  
+            time_strs,
+            save_dir=save_dir
+        )
   
 
 if __name__ == "__main__":
