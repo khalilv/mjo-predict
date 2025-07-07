@@ -189,9 +189,12 @@ class MJOForecastModule(LightningModule):
         out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
 
         if forecast_data is not None:
-            assert (forecast_timestamps == out_timestamps).all(), 'Found mismatch between forecast timestamps and out timestamps'
+            assert (forecast_timestamps == out_timestamps[:, :forecast_timestamps.shape[1]]).all(), 'Found mismatch between forecast timestamps and out timestamps'
             forecast_data = forecast_data.permute(0, 2, 1, 3) # (B, T, E, V)
             forecast_future = forecast_data.flatten(2, 3) # (B, T, E*V) flatten ensemble members to seperate variables
+            if forecast_future.shape[1] < out_timestamps.shape[1]:
+                padding = torch.zeros((forecast_future.shape[0], out_timestamps.shape[1] - forecast_future.shape[1], forecast_future.shape[2]), device=self.device, dtype=self.dtype)
+                forecast_future = torch.cat([forecast_future, padding], dim=1)
             forecast_past = torch.zeros((forecast_future.shape[0], in_data.shape[1], forecast_future.shape[2]), device=self.device, dtype=self.dtype) #forecast is only known in the future so we set these to 0
             x_past =  torch.cat([in_data, in_timestamp_encodings, forecast_past], dim=-1)
             x_future = torch.cat([out_timestamp_encodings, forecast_future], dim=-1) 

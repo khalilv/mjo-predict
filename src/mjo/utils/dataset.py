@@ -133,7 +133,7 @@ class Forecast(IterableDataset):
                             forecast_npz_data = np.load(os.path.join(self.forecast_dir, forecast_mean_file))
                             forecast_data = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in in_variables], dim=2)
                             forecast_timestamps = np.array(forecast_npz_data['dates'])
-                            assert len(forecast_timestamps) == len(out_timestamps), f'Found mismatch between forecast length {len(forecast_timestamps)} and predict length {len(out_timestamps)}'
+                            # assert len(forecast_timestamps) == len(out_timestamps), f'Found mismatch between forecast length {len(forecast_timestamps)} and predict length {len(out_timestamps)}'
                             if self.load_forecast_members:
                                 forecast_members_file = f"{str(data['dates'][t]).split('T')[0]}_members.npz"
                                 if os.path.exists(os.path.join(self.forecast_dir, forecast_members_file)):
