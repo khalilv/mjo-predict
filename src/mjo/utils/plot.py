@@ -253,3 +253,39 @@ def lag_correlation_plot(corrs: np.ndarray, timesteps: np.ndarray, variables: li
         plt.close()
     else:
         plt.show()
+
+def bivariate_correlation_by_month_plot(bcorr_dict, label, title, output_filename=None, levels=np.linspace(0.1, 1.0, 10), threshold=0.5, cmap="RdBu_r"):
+    months = sorted(bcorr_dict.keys())
+    lead_times = len(next(iter(bcorr_dict.values())))  # assume all months have same lead time length
+
+    # build metric matrix of shape (lead_time, 12)
+    metric_array = np.stack([bcorr_dict[m] for m in months], axis=-1)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Contourf plot
+    c = ax.contourf(months, np.arange(1, lead_times + 1), metric_array, levels=levels, cmap=cmap)
+
+    # Contour line at threshold
+    cs = ax.contour(months, np.arange(1, lead_times + 1), metric_array, levels=[threshold], colors=['blue', 'red'])
+    ax.clabel(cs, fmt='%.1f')
+
+    # Month labels
+    ax.set_xticks(months)
+    ax.set_xticklabels(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+
+    ax.set_ylabel("Lead time (days)")
+    ax.set_title(title)
+
+    # Colorbar
+    cbar = plt.colorbar(c, orientation='horizontal', pad=0.1)
+    cbar.set_label(label)
+
+    plt.tight_layout()
+
+    if output_filename:
+        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
