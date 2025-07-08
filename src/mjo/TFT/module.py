@@ -3,6 +3,7 @@
 
 # credits: https://github.com/ashleve/lightning-hydra-template/blob/main/src/models/mnist_module.py
 import os
+import math
 import torch
 from typing import Any, Dict, Union
 from pytorch_lightning import LightningModule
@@ -185,12 +186,29 @@ class MJOForecastModule(LightningModule):
         if self.year_normalization:
             self.year_normalization.to(device=self.device, dtype=self.dtype)
     
+    def on_train_epoch_end(self) -> None:
+        p = self.get_load_samples_without_forecast_prob(self.current_epoch + 1)
+        self.trainer.datamodule.data_train.dataset.load_samples_without_forecast_prob = p
+        self.log('train/load_samples_without_forecast_prob', p)
+        return
+
+    def get_load_samples_without_forecast_prob(self, epoch):
+        max_epochs = getattr(self.trainer, "max_epochs", None)
+        if max_epochs is None or max_epochs <= 0:
+            return 1.0
+        
+        # Cosine decay from 1.0 to 0.0 over max_epochs
+        cosine_decay = 0.5 * (1 + math.cos(math.pi * epoch / max_epochs))
+        return max(0.0, min(1.0, cosine_decay))
+        
+    
     def training_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, out_data, forecast_data, forecast_mask, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
         x_in = prep_input(
             in_data=in_data,
             forecast_data=forecast_data,
+            forecast_mask=forecast_mask,
             in_timestamps=in_timestamps,
             out_timestamps=out_timestamps,
             forecast_timestamps=forecast_timestamps,
@@ -216,11 +234,12 @@ class MJOForecastModule(LightningModule):
         return batch_loss['mse_norm'] #batch_loss['mae_norm']
     
     def validation_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, out_data, forecast_data, forecast_mask, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
         x_in = prep_input(
             in_data=in_data,
             forecast_data=forecast_data,
+            forecast_mask=forecast_mask,
             in_timestamps=in_timestamps,
             out_timestamps=out_timestamps,
             forecast_timestamps=forecast_timestamps,
@@ -260,11 +279,12 @@ class MJOForecastModule(LightningModule):
             os.makedirs(self.output_dir, exist_ok=False)
 
     def test_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, out_data, forecast_data, forecast_mask, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
        
         x_in = prep_input(
             in_data=in_data,
             forecast_data=forecast_data,
+            forecast_mask=forecast_mask,
             in_timestamps=in_timestamps,
             out_timestamps=out_timestamps,
             forecast_timestamps=forecast_timestamps,

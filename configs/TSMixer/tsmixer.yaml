@@ -73,7 +73,7 @@ trainer:
 model:
   pretrained_path: ""
   past_cov_dim: 3
-  future_cov_dim: 5
+  future_cov_dim: 6
   static_cov_dim: 0
   nr_params: 1
   hidden_size: 32

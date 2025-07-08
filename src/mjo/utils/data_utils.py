@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from typing import Optional, Any
 
-def prep_input(in_data: torch.Tensor, forecast_data: Optional[torch.Tensor], in_timestamps: np.ndarray, out_timestamps: np.ndarray, forecast_timestamps: Optional[np.ndarray], device: torch.device, dtype: torch.dtype, year_normalization: Any = None):
+def prep_input(in_data: torch.Tensor, forecast_data: Optional[torch.Tensor], forecast_mask: Optional[torch.tensor], in_timestamps: np.ndarray, out_timestamps: np.ndarray, forecast_timestamps: Optional[np.ndarray], device: torch.device, dtype: torch.dtype, year_normalization: Any = None):
     
     in_timestamp_encodings = get_timestamp_encodings(in_timestamps, device, dtype, year_normalization)
     out_timestamp_encodings = get_timestamp_encodings(out_timestamps, device, dtype, year_normalization)
@@ -12,10 +12,13 @@ def prep_input(in_data: torch.Tensor, forecast_data: Optional[torch.Tensor], in_
         forecast_data = forecast_data.permute(0, 2, 1, 3) # (B, T, E, V)
         forecast_future = forecast_data.flatten(2, 3) # (B, T, E*V) flatten ensemble members to seperate variables
         if forecast_future.shape[1] < out_timestamps.shape[1]:
-            padding = torch.zeros((forecast_future.shape[0], out_timestamps.shape[1] - forecast_future.shape[1], forecast_future.shape[2]), device=device, dtype=dtype)
+            diff = out_timestamps.shape[1] - forecast_future.shape[1]
+            padding = torch.zeros((forecast_future.shape[0], diff, forecast_future.shape[2]), device=device, dtype=dtype)
             forecast_future = torch.cat([forecast_future, padding], dim=1)
+            mask_padding = torch.zeros((forecast_future.shape[0], diff), device=device, dtype=dtype)
+            forecast_mask = torch.cat([forecast_mask, mask_padding], dim=1)
         x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1)
-        x_future = torch.cat([out_timestamp_encodings, forecast_future], dim=-1) 
+        x_future = torch.cat([out_timestamp_encodings, forecast_future, forecast_mask.unsqueeze(-1)], dim=-1) 
     else:
         x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
         x_future = out_timestamp_encodings

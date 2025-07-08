@@ -156,7 +156,8 @@ class MJOForecastDataModule(LightningDataModule):
                     normalize_data = self.normalize_data,
                     in_transforms=self.in_transforms,
                     out_transforms=self.out_transforms,
-                    filter_mjo_events=False
+                    filter_mjo_events=False,
+                    load_samples_without_forecast_prob=1.0
                 ),
                 max_buffer_size=self.max_buffer_size,
             )
@@ -174,7 +175,8 @@ class MJOForecastDataModule(LightningDataModule):
                 normalize_data = self.normalize_data,
                 in_transforms=self.in_transforms,
                 out_transforms=self.out_transforms,
-                filter_mjo_events=self.filter_mjo_events
+                filter_mjo_events=self.filter_mjo_events,
+                load_samples_without_forecast_prob=0.0
             )
                 
         if stage == 'test':
@@ -192,7 +194,8 @@ class MJOForecastDataModule(LightningDataModule):
                 normalize_data = self.normalize_data,
                 in_transforms=self.in_transforms,
                 out_transforms=self.out_transforms,
-                filter_mjo_events=self.filter_mjo_events
+                filter_mjo_events=self.filter_mjo_events,
+                load_samples_without_forecast_prob=0.0
             )
 
     def train_dataloader(self):

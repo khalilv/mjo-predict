@@ -77,7 +77,7 @@ trainer:
 model:
   pretrained_path: ""
   date_variables: ['year', 'doy_sin', 'doy_cos']
-  known_future_variables: ['FuXi_RMM1', 'FuXi_RMM2']
+  known_future_variables: ['RMM1_forecast', 'RMM2_forecast', 'forecast_mask']
   num_static_components: 0
   hidden_size: 32
   lstm_layers: 1

@@ -100,7 +100,8 @@ class Forecast(IterableDataset):
         normalize_data: bool = False, 
         in_transforms = None, 
         out_transforms = None,
-        filter_mjo_events: bool = False
+        filter_mjo_events: bool = False,
+        load_samples_without_forecast_prob: float = 0.0,
     ) -> None:
         super().__init__()
         self.dataset = dataset
@@ -110,6 +111,8 @@ class Forecast(IterableDataset):
         self.in_transforms = in_transforms
         self.out_transforms = out_transforms
         self.filter_mjo_events = filter_mjo_events
+        self.forecast_shape = None
+        self.load_samples_without_forecast_prob = load_samples_without_forecast_prob
       
     def __iter__(self):
         for data, in_variables, out_variables, predictions, history, predict_range, history_range in self.dataset:
@@ -142,17 +145,27 @@ class Forecast(IterableDataset):
                                     forecast_data = torch.concatenate([forecast_data, forecast_member_data], dim=0)
                                     forecast_member_timestamps = np.array(forecast_npz_data['dates'])
                                     assert (forecast_timestamps == forecast_member_timestamps).all(), f"Found mismatch between forecast member timestamps and forecast mean timestamps for {str(data['dates'][t]).split('T')[0]}"     
+                            self.forecast_shape = forecast_data.shape #(E, T, V)
+                            forecast_mask = torch.ones(self.forecast_shape[1], dtype=torch.get_default_dtype())
+                            if self.normalize_data:
+                                forecast_data = self.in_transforms.normalize(forecast_data)
                         else:
-                            continue
+                            if self.forecast_shape is not None and random.random() < self.load_samples_without_forecast_prob:
+                                forecast_data = torch.zeros(self.forecast_shape, dtype=torch.get_default_dtype())
+                                forecast_timestamps = out_timestamps[:self.forecast_shape[1]]
+                                forecast_mask = torch.zeros(self.forecast_shape[1], dtype=torch.get_default_dtype())
+                            else:
+                                continue
                     
                     #remove missing datapoints
                     if torch.isnan(in_data).any() or torch.isnan(out_data).any():
                         continue
 
                     if self.normalize_data:
-                        yield self.in_transforms.normalize(in_data), self.out_transforms.normalize(out_data), self.in_transforms.normalize(forecast_data) if self.forecast_dir else None, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
-                    else:
-                        yield in_data, out_data, forecast_data if self.forecast_dir else None, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
+                        in_data = self.in_transforms.normalize(in_data)
+                        out_data = self.out_transforms.normalize(out_data)
+                    
+                    yield in_data, out_data, forecast_data if self.forecast_dir else None, forecast_mask if self.forecast_dir else None, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
 
 
 class ShuffleIterableDataset(IterableDataset):
@@ -185,15 +198,17 @@ def collate_fn(batch):
     in_data = torch.stack(batch[0])
     out_data = torch.stack(batch[1])
     forecast_data = torch.stack(batch[2]) if batch[2][0] is not None else None
-    in_variables = batch[3][0]
-    out_variables = batch[4][0]
-    in_timestamps = np.array(batch[5])
-    out_timestamps = np.array(batch[6])
-    forecast_timestamps = np.array(batch[7]) if batch[7][0] is not None else None
+    forecast_mask = torch.stack(batch[3])if batch[3][0] is not None else None
+    in_variables = batch[4][0]
+    out_variables = batch[5][0]
+    in_timestamps = np.array(batch[6])
+    out_timestamps = np.array(batch[7])
+    forecast_timestamps = np.array(batch[8]) if batch[8][0] is not None else None
     return (
         in_data,
         out_data,
         forecast_data,
+        forecast_mask,
         in_variables,
         out_variables,
         in_timestamps,
