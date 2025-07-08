@@ -2,7 +2,7 @@ seed_everything: 42
 
 # ---------------------------- TRAINER -------------------------------------------
 trainer:
-  default_root_dir: /glade/derecho/scratch/kvirji/mjo-predict/exps/TFT/FuXi/two-stage/10d_hist/optuna
+  default_root_dir: /glade/derecho/scratch/kvirji/mjo-predict/exps/TSMixer/stage-one/10d_hist/optuna
   precision: 32
 
   devices: 1
@@ -14,6 +14,7 @@ trainer:
     #   timeout: 02:00:00
       # find_unused_parameters: true
 
+
   min_epochs: 1
   max_epochs: 250
   enable_progress_bar: true
@@ -23,7 +24,6 @@ trainer:
 
   gradient_clip_val: 1.0
 
-  # debugging
   fast_dev_run: false
 
   logger:
@@ -37,10 +37,6 @@ trainer:
       prefix: ""
 
   callbacks:
-    # - class_path: pytorch_lightning.callbacks.LearningRateFinder
-    #   init_args:
-    #     attr_name: "lr"
-
     - class_path: pytorch_lightning.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "step"
@@ -52,20 +48,20 @@ trainer:
     - class_path: pytorch_lightning.callbacks.ModelCheckpoint
       init_args:
         dirpath: "${trainer.default_root_dir}/checkpoints"
-        monitor: "val/mse" # name of the logged metric which determines when model is improving
-        mode: "min" # "max" means higher metric value is better, can be also "min"
-        save_top_k: 1 # save k best models (determined by above metric)
-        save_last: true # additionaly always save model from last epoch
+        monitor: "val/mse"
+        mode: "min"
+        save_top_k: 1
+        save_last: true
         verbose: false
         filename: "epoch_{epoch:03d}"
         auto_insert_metric_name: false
 
     - class_path: pytorch_lightning.callbacks.EarlyStopping
       init_args:
-        monitor: "val/mse" # name of the logged metric which determines when model is improving
-        mode: "min" # "max" means higher metric value is better, can be also "min"
-        patience: 20 # how many validation epochs of not improving until training stops
-        min_delta: 0. # minimum change in the monitored metric needed to qualify as an improvement
+        monitor: "val/mse"
+        mode: "min"
+        patience: 20
+        min_delta: 0.
 
     - class_path: pytorch_lightning.callbacks.RichModelSummary
       init_args:
@@ -76,25 +72,23 @@ trainer:
 # ---------------------------- MODEL -------------------------------------------
 model:
   pretrained_path: ""
-  date_variables: ['year', 'doy_sin', 'doy_cos']
-  known_future_variables: ['RMM1_forecast', 'RMM2_forecast', 'forecast_mask']
-  num_static_components: 0
+  past_cov_dim: 3
+  future_cov_dim: 6
+  static_cov_dim: 0
+  nr_params: 1
   hidden_size: 32
-  lstm_layers: 1
-  num_attention_heads: 8
-  full_attention: false
-  feed_forward: "GatedResidualNetwork"
-  hidden_continuous_size: 32
-  add_relative_index: false
-  dropout: 0.5
-  norm_type: "LayerNorm"
-  lr: 1.5e-5
-  beta_1: 0.87
-  beta_2: 0.99
-  weight_decay: 7.5e-4
+  ff_size: 32
+  num_blocks: 4
+  activation: "ReLU"
+  dropout: 0.4
+  norm_type: "TimeBatchNorm2d"
+  normalize_before: true
+  lr: 3e-6
+  beta_1: 0.9
+  beta_2: 0.95
+  weight_decay: 3.72e-5
   warmup_steps: 1000
   max_steps: 50000
-  load_samples_without_forecasts_until_epoch: 100
   save_outputs: true
 
 # ---------------------------- DATA -------------------------------------------
@@ -102,6 +96,9 @@ data:
   root_dir: /glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed
   forecast_dir: /glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed/FuXi
   load_forecast_members: false
+  load_forecast_samples: false
+  forecast_length: 42
+  ensemble_members: 1
   in_variables:
     - "RMM1"
     - "RMM2"

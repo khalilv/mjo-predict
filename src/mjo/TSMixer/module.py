@@ -62,7 +62,6 @@ class MJOForecastModule(LightningModule):
         weight_decay: float = 1e-5,
         warmup_steps: int = 1000,
         max_steps: int = 50000,
-        load_samples_without_forecasts_until_epoch: int = 0,
         save_outputs: bool = False
     ):
         super().__init__()
@@ -87,7 +86,6 @@ class MJOForecastModule(LightningModule):
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps
         self.max_steps = max_steps
-        self.load_samples_without_forecasts_until_epoch = load_samples_without_forecasts_until_epoch
 
         # Output and utility attributes
         self.save_outputs = save_outputs
@@ -164,21 +162,7 @@ class MJOForecastModule(LightningModule):
             self.denormalization.to(device=self.device, dtype=self.dtype)
         if self.year_normalization:
             self.year_normalization.to(device=self.device, dtype=self.dtype)
-    
-    def on_train_epoch_end(self) -> None:
-        p = self.get_load_samples_without_forecast_prob(self.current_epoch + 1)
-        self.trainer.datamodule.data_train.dataset.load_samples_without_forecast_prob = p
-        self.log('train/load_samples_without_forecast_prob', p)
-        return
-
-    def get_load_samples_without_forecast_prob(self, epoch):
-        if self.load_samples_without_forecasts_until_epoch <= 0:
-            return 0.0
-
-        # linear decay from 1.0 to 0.0
-        linear_decay = 1.0 - (epoch / self.load_samples_without_forecasts_until_epoch)
-        return max(0.0, min(1.0, linear_decay))
-        
+            
     def training_step(self, batch: Any, batch_idx: int):
         in_data, out_data, forecast_data, forecast_mask, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 

@@ -22,7 +22,6 @@ def objective(trial):
     beta_2 = trial.suggest_float("beta_2", 0.95, 0.999, step=0.01)
     weight_decay = trial.suggest_float("weight_decay", 1e-7, 1e-2, log=True)
     normalize_before = trial.suggest_categorical("normalize_before", [True, False])
-    load_samples_without_forecasts_until_epoch = trial.suggest_int('load_samples_without_forecasts_until_epoch', 10, 250, step=10)
 
 
     # Set up CLI (without running)
@@ -60,7 +59,6 @@ def objective(trial):
     cli.model.beta_2 = beta_2
     cli.model.weight_decay = weight_decay
     cli.model.normalize_before = normalize_before
-    cli.model.load_samples_without_forecasts_until_epoch = load_samples_without_forecasts_until_epoch
     cli.model.init_network()
 
     # pruning callback

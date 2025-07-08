@@ -101,7 +101,9 @@ class Forecast(IterableDataset):
         in_transforms = None, 
         out_transforms = None,
         filter_mjo_events: bool = False,
-        load_samples_without_forecast_prob: float = 0.0,
+        load_forecast_samples: bool = False,
+        forecast_length: int = 42,
+        ensemble_members: int = 1,
     ) -> None:
         super().__init__()
         self.dataset = dataset
@@ -112,7 +114,9 @@ class Forecast(IterableDataset):
         self.out_transforms = out_transforms
         self.filter_mjo_events = filter_mjo_events
         self.forecast_shape = None
-        self.load_samples_without_forecast_prob = load_samples_without_forecast_prob
+        self.load_forecast_samples = load_forecast_samples
+        self.forecast_length = forecast_length
+        self.ensemble_members = ensemble_members
       
     def __iter__(self):
         for data, in_variables, out_variables, predictions, history, predict_range, history_range in self.dataset:
@@ -132,7 +136,7 @@ class Forecast(IterableDataset):
                     # if forecast_dir is provided, only load samples with future forecasts
                     if self.forecast_dir:
                         forecast_mean_file = f"{str(data['dates'][t]).split('T')[0]}_mean.npz"
-                        if os.path.exists(os.path.join(self.forecast_dir, forecast_mean_file)):
+                        if os.path.exists(os.path.join(self.forecast_dir, forecast_mean_file)) and self.load_forecast_samples:
                             forecast_npz_data = np.load(os.path.join(self.forecast_dir, forecast_mean_file))
                             forecast_data = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in in_variables], dim=2)
                             forecast_timestamps = np.array(forecast_npz_data['dates'])
@@ -145,17 +149,15 @@ class Forecast(IterableDataset):
                                     forecast_data = torch.concatenate([forecast_data, forecast_member_data], dim=0)
                                     forecast_member_timestamps = np.array(forecast_npz_data['dates'])
                                     assert (forecast_timestamps == forecast_member_timestamps).all(), f"Found mismatch between forecast member timestamps and forecast mean timestamps for {str(data['dates'][t]).split('T')[0]}"     
-                            self.forecast_shape = forecast_data.shape #(E, T, V)
-                            forecast_mask = torch.ones(self.forecast_shape[1], dtype=torch.get_default_dtype())
+                            forecast_mask = torch.ones(forecast_data.shape[1], dtype=torch.get_default_dtype())
                             if self.normalize_data:
                                 forecast_data = self.in_transforms.normalize(forecast_data)
+                        elif not self.load_forecast_samples:
+                            forecast_data = torch.zeros((self.ensemble_members, self.forecast_length, len(in_variables)), dtype=torch.get_default_dtype())
+                            forecast_timestamps = out_timestamps[:self.forecast_length]
+                            forecast_mask = torch.zeros(self.forecast_length, dtype=torch.get_default_dtype())
                         else:
-                            if self.forecast_shape is not None and random.random() < self.load_samples_without_forecast_prob:
-                                forecast_data = torch.zeros(self.forecast_shape, dtype=torch.get_default_dtype())
-                                forecast_timestamps = out_timestamps[:self.forecast_shape[1]]
-                                forecast_mask = torch.zeros(self.forecast_shape[1], dtype=torch.get_default_dtype())
-                            else:
-                                continue
+                            continue
                     
                     #remove missing datapoints
                     if torch.isnan(in_data).any() or torch.isnan(out_data).any():

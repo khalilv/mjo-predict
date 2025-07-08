@@ -101,6 +101,9 @@ data:
   root_dir: /glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed
   forecast_dir: /glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed/FuXi
   load_forecast_members: false
+  load_forecast_samples: true
+  forecast_length: 42
+  ensemble_members: 1
   in_variables:
     - "RMM1"
     - "RMM2"

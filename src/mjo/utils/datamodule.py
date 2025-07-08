@@ -52,6 +52,9 @@ class MJOForecastDataModule(LightningDataModule):
         batch_size: int = 64,
         num_workers: int = 0,
         pin_memory: bool = False,
+        load_forecast_samples: bool = False,
+        forecast_length: int = 42,
+        ensemble_members: int = 1,
     ):
         super().__init__()
         
@@ -71,7 +74,10 @@ class MJOForecastDataModule(LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.pin_memory = pin_memory
-        
+        self.load_forecast_samples = load_forecast_samples
+        self.forecast_length = forecast_length
+        self.ensemble_members = ensemble_members
+
         self.train_file = os.path.join(self.root_dir, "train.npz")
         self.val_file = os.path.join(self.root_dir, "val.npz")
         self.test_file = os.path.join(self.root_dir, "test.npz")
@@ -157,7 +163,9 @@ class MJOForecastDataModule(LightningDataModule):
                     in_transforms=self.in_transforms,
                     out_transforms=self.out_transforms,
                     filter_mjo_events=False,
-                    load_samples_without_forecast_prob=1.0
+                    load_forecast_samples=self.load_forecast_samples,
+                    forecast_length=self.forecast_length,
+                    ensemble_members=self.ensemble_members
                 ),
                 max_buffer_size=self.max_buffer_size,
             )
@@ -176,7 +184,9 @@ class MJOForecastDataModule(LightningDataModule):
                 in_transforms=self.in_transforms,
                 out_transforms=self.out_transforms,
                 filter_mjo_events=self.filter_mjo_events,
-                load_samples_without_forecast_prob=0.0
+                load_forecast_samples=self.load_forecast_samples,
+                forecast_length=self.forecast_length,
+                ensemble_members=self.ensemble_members
             )
                 
         if stage == 'test':
@@ -195,7 +205,9 @@ class MJOForecastDataModule(LightningDataModule):
                 in_transforms=self.in_transforms,
                 out_transforms=self.out_transforms,
                 filter_mjo_events=self.filter_mjo_events,
-                load_samples_without_forecast_prob=0.0
+                load_forecast_samples=self.load_forecast_samples,
+                forecast_length=self.forecast_length,
+                ensemble_members=self.ensemble_members
             )
 
     def train_dataloader(self):
