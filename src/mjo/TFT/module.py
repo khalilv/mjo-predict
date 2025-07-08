@@ -4,13 +4,13 @@
 # credits: https://github.com/ashleve/lightning-hydra-template/blob/main/src/models/mnist_module.py
 import os
 import torch
-import numpy as np
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 from pytorch_lightning import LightningModule
 from mjo.TFT.model import TFTModel
 from mjo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from mjo.utils.metrics import MSE, MAE
 from mjo.utils.RMM.io import save_rmm_indices
+from mjo.utils.data_utils import prep_input
 
 class MJOForecastModule(LightningModule):
     """
@@ -145,7 +145,7 @@ class MJOForecastModule(LightningModule):
         self.variables_meta = {
             "model_config": {
                 "reals_input": self.in_variables + self.date_variables + self.known_future_variables,
-                "time_varying_encoder_input": self.in_variables + self.date_variables + self.known_future_variables,
+                "time_varying_encoder_input": self.in_variables + self.date_variables,
                 "time_varying_decoder_input": self.date_variables + self.known_future_variables,
                 "static_input": [],
                 "static_input_numeric": [],
@@ -185,51 +185,19 @@ class MJOForecastModule(LightningModule):
         if self.year_normalization:
             self.year_normalization.to(device=self.device, dtype=self.dtype)
     
-    def get_timestamp_encodings(self, timestamps):
-        years = torch.tensor(timestamps.astype('datetime64[Y]').astype(int) + 1970, device=self.device, dtype=self.dtype)
-        if self.year_normalization:
-            years = self.year_normalization.normalize(years)
-
-        start_of_year = timestamps.astype('datetime64[Y]')
-        doy = (timestamps - start_of_year).astype('timedelta64[D]').astype(int)
-        next_year = (start_of_year + np.timedelta64(1, 'Y')).astype('datetime64[D]')
-        days_in_year = (next_year - start_of_year).astype(int)  # shape (B, L)
-
-        # Angle for sin/cos embedding
-        angle = 2 * np.pi * doy / days_in_year
-        sin = np.sin(angle)
-        cos = np.cos(angle)
-
-        doy_encoding = torch.tensor(np.stack([sin, cos], axis=-1),  device=self.device, dtype=self.dtype)
-
-        timestamp_encodings = torch.cat([years.unsqueeze(-1), doy_encoding], dim=-1)
-
-        return timestamp_encodings
-    
-    def prep_input(self, in_data: torch.Tensor, forecast_data: Optional[torch.Tensor], in_timestamps: np.ndarray, out_timestamps: np.ndarray, forecast_timestamps: Optional[np.ndarray]):
-        
-        in_timestamp_encodings = self.get_timestamp_encodings(in_timestamps)
-        out_timestamp_encodings = self.get_timestamp_encodings(out_timestamps)
-
-        if forecast_data is not None:
-            assert (forecast_timestamps == out_timestamps).all(), 'Found mismatch between forecast timestamps and out timestamps'
-            forecast_data = forecast_data.permute(0, 2, 1, 3) # (B, T, E, V)
-            forecast_future = forecast_data.flatten(2, 3) # (B, T, E*V) flatten ensemble members to seperate variables
-            forecast_past = torch.zeros((forecast_future.shape[0], in_data.shape[1], forecast_future.shape[2]), device=self.device, dtype=self.dtype) #forecast is only known in the future so we set these to 0
-            x_past =  torch.cat([in_data, in_timestamp_encodings, forecast_past], dim=-1)
-            x_future = torch.cat([out_timestamp_encodings, forecast_future], dim=-1) 
-        else:
-            x_past =  torch.cat([in_data, in_timestamp_encodings], dim=-1) 
-            x_future = out_timestamp_encodings
-        
-        x_static = None    
-        return (x_past, x_future, x_static)
-
     def training_step(self, batch: Any, batch_idx: int):
         in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        x_in = self.prep_input(in_data, forecast_data, in_timestamps, out_timestamps, forecast_timestamps)
-        
+        x_in = prep_input(
+            in_data=in_data,
+            forecast_data=forecast_data,
+            in_timestamps=in_timestamps,
+            out_timestamps=out_timestamps,
+            forecast_timestamps=forecast_timestamps,
+            device=self.device,
+            dtype=self.dtype,
+            year_normalization=self.year_normalization
+        )        
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
@@ -250,7 +218,16 @@ class MJOForecastModule(LightningModule):
     def validation_step(self, batch: Any, batch_idx: int):
         in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        x_in = self.prep_input(in_data, forecast_data, in_timestamps, out_timestamps, forecast_timestamps)
+        x_in = prep_input(
+            in_data=in_data,
+            forecast_data=forecast_data,
+            in_timestamps=in_timestamps,
+            out_timestamps=out_timestamps,
+            forecast_timestamps=forecast_timestamps,
+            device=self.device,
+            dtype=self.dtype,
+            year_normalization=self.year_normalization
+        ) 
         
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
@@ -285,7 +262,16 @@ class MJOForecastModule(LightningModule):
     def test_step(self, batch: Any, batch_idx: int):
         in_data, out_data, forecast_data, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
        
-        x_in = self.prep_input(in_data, forecast_data, in_timestamps, out_timestamps, forecast_timestamps)
+        x_in = prep_input(
+            in_data=in_data,
+            forecast_data=forecast_data,
+            in_timestamps=in_timestamps,
+            out_timestamps=out_timestamps,
+            forecast_timestamps=forecast_timestamps,
+            device=self.device,
+            dtype=self.dtype,
+            year_normalization=self.year_normalization
+        ) 
 
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)

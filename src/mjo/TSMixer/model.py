@@ -392,7 +392,7 @@ class TSMixerX(nn.Module):
         self.fc_hist = nn.Linear(self.input_length, self.output_length)
         self.feature_mixing_hist = _FeatureMixing(
             sequence_length=self.output_length,
-            input_dim=input_dim + past_cov_dim + future_cov_dim,
+            input_dim=input_dim + past_cov_dim, #+ future_cov_dim,
             output_dim=hidden_size,
             **mixer_params,
         )
