@@ -60,7 +60,7 @@ trainer:
       init_args:
         monitor: "val/mse"
         mode: "min"
-        patience: 20
+        patience: 10
         min_delta: 0.
 
     - class_path: pytorch_lightning.callbacks.RichModelSummary

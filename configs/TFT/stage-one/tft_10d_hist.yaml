@@ -64,7 +64,7 @@ trainer:
       init_args:
         monitor: "val/mse" # name of the logged metric which determines when model is improving
         mode: "min" # "max" means higher metric value is better, can be also "min"
-        patience: 20 # how many validation epochs of not improving until training stops
+        patience: 10 # how many validation epochs of not improving until training stops
         min_delta: 0. # minimum change in the monitored metric needed to qualify as an improvement
 
     - class_path: pytorch_lightning.callbacks.RichModelSummary
