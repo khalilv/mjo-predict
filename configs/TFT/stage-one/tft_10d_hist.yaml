@@ -2,7 +2,7 @@ seed_everything: 42
 
 # ---------------------------- TRAINER -------------------------------------------
 trainer:
-  default_root_dir: /glade/derecho/scratch/kvirji/mjo-predict/exps/TFT/stage-one/10d_hist/optuna
+  default_root_dir: /glade/derecho/scratch/kvirji/mjo-predict/exps/TFT/stage-one/10d_hist
   precision: 32
 
   devices: 1
@@ -79,19 +79,19 @@ model:
   date_variables: ['year', 'doy_sin', 'doy_cos']
   known_future_variables: ['RMM1_forecast', 'RMM2_forecast', 'forecast_mask']
   num_static_components: 0
-  hidden_size: 32
-  lstm_layers: 1
-  num_attention_heads: 8
+  hidden_size: 512
+  lstm_layers: 3
+  num_attention_heads: 4
   full_attention: false
   feed_forward: "GatedResidualNetwork"
-  hidden_continuous_size: 32
+  hidden_continuous_size: 1024
   add_relative_index: false
-  dropout: 0.5
+  dropout: 0.1
   norm_type: "LayerNorm"
-  lr: 1.5e-5
-  beta_1: 0.87
-  beta_2: 0.99
-  weight_decay: 7.5e-4
+  lr: 1.6e-6
+  beta_1: 0.95
+  beta_2: 0.97
+  weight_decay: 1.05e-7
   warmup_steps: 1000
   max_steps: 50000
   save_outputs: true
