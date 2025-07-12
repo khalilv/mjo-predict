@@ -101,6 +101,7 @@ class Forecast(IterableDataset):
         in_transforms = None, 
         out_transforms = None,
         filter_mjo_events: bool = False,
+        filter_mjo_phases: list = [],
         load_forecast_samples: bool = False,
         forecast_length: int = 42,
         ensemble_members: int = 1,
@@ -113,6 +114,7 @@ class Forecast(IterableDataset):
         self.in_transforms = in_transforms
         self.out_transforms = out_transforms
         self.filter_mjo_events = filter_mjo_events
+        self.filter_mjo_phases = filter_mjo_phases
         self.forecast_shape = None
         self.load_forecast_samples = load_forecast_samples
         self.forecast_length = forecast_length
@@ -122,7 +124,7 @@ class Forecast(IterableDataset):
         for data, in_variables, out_variables, predictions, history, predict_range, history_range in self.dataset:
             
             for t in range(history_range, len(data['dates']) - predict_range):
-                if not self.filter_mjo_events or (self.filter_mjo_events and data['amplitude'][t] > 1):
+                if (not self.filter_mjo_events or (self.filter_mjo_events and data['amplitude'][t] > 1)) and (not self.filter_mjo_phases or (self.filter_mjo_phases and data['phase'][t] in self.filter_mjo_phases)):
                     in_data = torch.stack([torch.tensor([data[v][t + h] for h in history + [0]], dtype=torch.get_default_dtype()) for v in in_variables], dim=1)
                     in_timestamps = np.array([data['dates'][t + h] for h in history + [0]])
                     

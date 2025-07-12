@@ -47,6 +47,7 @@ class MJOForecastDataModule(LightningDataModule):
         predictions: list = [],
         history: list = [],
         filter_mjo_events: bool = False,
+        filter_mjo_phases: list = [],
         normalize_data: bool = False,
         max_buffer_size: int = 100,        
         batch_size: int = 64,
@@ -69,6 +70,7 @@ class MJOForecastDataModule(LightningDataModule):
         self.predictions = predictions
         self.history = history
         self.filter_mjo_events = filter_mjo_events
+        self.filter_mjo_phases = filter_mjo_phases
         self.normalize_data = normalize_data
         self.max_buffer_size = max_buffer_size
         self.batch_size = batch_size
@@ -163,6 +165,7 @@ class MJOForecastDataModule(LightningDataModule):
                     in_transforms=self.in_transforms,
                     out_transforms=self.out_transforms,
                     filter_mjo_events=False,
+                    filter_mjo_phases=self.filter_mjo_phases,
                     load_forecast_samples=self.load_forecast_samples,
                     forecast_length=self.forecast_length,
                     ensemble_members=self.ensemble_members
@@ -184,6 +187,7 @@ class MJOForecastDataModule(LightningDataModule):
                 in_transforms=self.in_transforms,
                 out_transforms=self.out_transforms,
                 filter_mjo_events=self.filter_mjo_events,
+                filter_mjo_phases=self.filter_mjo_phases,
                 load_forecast_samples=self.load_forecast_samples,
                 forecast_length=self.forecast_length,
                 ensemble_members=self.ensemble_members
@@ -205,6 +209,7 @@ class MJOForecastDataModule(LightningDataModule):
                 in_transforms=self.in_transforms,
                 out_transforms=self.out_transforms,
                 filter_mjo_events=self.filter_mjo_events,
+                filter_mjo_phases=self.filter_mjo_phases,
                 load_forecast_samples=self.load_forecast_samples,
                 forecast_length=self.forecast_length,
                 ensemble_members=self.ensemble_members
