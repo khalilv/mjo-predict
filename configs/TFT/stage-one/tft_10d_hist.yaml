@@ -79,21 +79,21 @@ model:
   date_variables: ['year', 'doy_sin', 'doy_cos']
   known_future_variables: ['RMM1_forecast', 'RMM2_forecast', 'forecast_mask']
   num_static_components: 0
-  hidden_size: 512
+  hidden_size: 1024
   lstm_layers: 3
   num_attention_heads: 4
   full_attention: false
   feed_forward: "GatedResidualNetwork"
   hidden_continuous_size: 1024
   add_relative_index: false
-  dropout: 0.1
+  dropout: 0.3
   norm_type: "LayerNorm"
-  lr: 1.6e-6
+  lr: 7e-7
   beta_1: 0.95
   beta_2: 0.97
-  weight_decay: 1.05e-7
+  weight_decay: 1e-5
   warmup_steps: 1000
-  max_steps: 50000
+  max_steps: 25000
   save_outputs: true
 
 # ---------------------------- DATA -------------------------------------------
@@ -113,6 +113,7 @@ data:
   predictions: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60]
   history: [-10,-9,-8,-7,-6,-5,-4,-3,-2,-1]
   filter_mjo_events: false
+  filter_mjo_phases: [1, 2, 3, 4, 5, 6, 7, 8]
   normalize_data: true
   max_buffer_size: 10000
   batch_size: 64
