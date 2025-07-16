@@ -19,17 +19,16 @@ def subset_rmm_data(df, start_year, end_year, compute_statistics):
     subset_df['doy_sin'] = np.sin(angle)
     subset_df['doy_cos'] = np.cos(angle)
 
+    subset_df['year'] = subset_df.index.year
 
     # Compute normalization statistics on train only
     if compute_statistics:
-        year_mean = subset_df.index.year.values.mean()
-        year_std = subset_df.index.year.values.std()
-        mean = subset_df[['RMM1', 'RMM2', 'amplitude']].mean()
-        std = subset_df[['RMM1', 'RMM2', 'amplitude']].std()
-        return subset_df, mean, std, year_mean, year_std
+        mean = subset_df[['RMM1', 'RMM2', 'amplitude', 'year']].mean()
+        std = subset_df[['RMM1', 'RMM2', 'amplitude', 'year']].std()
+        return subset_df, mean, std
     else:
         return subset_df
-
+    
 def main():
         
     train_start_year = 1979
@@ -44,19 +43,27 @@ def main():
 
     input_df = load_rmm_indices(input_filepath, train_start_year, test_end_year)
 
-    train_df, mean, std, year_mean, year_std = subset_rmm_data(input_df, train_start_year, val_start_year, True)
+    train_df, mean, std = subset_rmm_data(input_df, train_start_year, val_start_year, True)
     val_df = subset_rmm_data(input_df, val_start_year, test_start_year, False)
     test_df = subset_rmm_data(input_df, test_start_year, test_end_year, False)
 
     np.savez(os.path.join(output_dir, 'statistics.npz'),
-            RMM1_mean=mean['RMM1'],
-            RMM2_mean=mean['RMM2'],
-            amplitude_mean=mean['amplitude'],
-            RMM1_std=std['RMM1'],
-            RMM2_std=std['RMM2'],
-            amplitude_std=std['amplitude'],
-            year_mean=year_mean, 
-            year_std=year_std)
+            RMM1_mean=0.0, #mean['RMM1'],
+            RMM2_mean=0.0, #mean['RMM2'],
+            amplitude_mean=0.0, #mean['amplitude'],
+            doy_sin_mean=0.0,
+            doy_cos_mean=0.0,
+            phase_sin_mean=0.0,
+            phase_cos_mean=0.0,
+            RMM1_std=1.0, #std['RMM1'],
+            RMM2_std=1.0, #std['RMM2'],
+            amplitude_std=1.0, #std['amplitude'],
+            doy_sin_std=1.0,
+            doy_cos_std=1.0,
+            phase_sin_std=1.0,
+            phase_cos_std=1.0,
+            year_mean=mean['year'], 
+            year_std=std['year'])
 
     np.savez(os.path.join(output_dir, 'train.npz'),
             RMM1=train_df['RMM1'].values,
@@ -67,6 +74,7 @@ def main():
             doy_cos=train_df['doy_cos'].values,
             phase_sin=train_df['phase_sin'].values,
             phase_cos=train_df['phase_cos'].values,
+            year=train_df['year'].values,
             dates=train_df.index.values)
 
     np.savez(os.path.join(output_dir, 'val.npz'),
@@ -78,6 +86,7 @@ def main():
             doy_cos=val_df['doy_cos'].values,
             phase_sin=val_df['phase_sin'].values,
             phase_cos=val_df['phase_cos'].values,
+            year=val_df['year'].values,
             dates=val_df.index.values)
 
     np.savez(os.path.join(output_dir, 'test.npz'),
@@ -89,6 +98,7 @@ def main():
             doy_cos=test_df['doy_cos'].values,
             phase_sin=test_df['phase_sin'].values,
             phase_cos=test_df['phase_cos'].values,
+            year=test_df['year'].values,
             dates=test_df.index.values)
 
     # plot correlation with ABM indices

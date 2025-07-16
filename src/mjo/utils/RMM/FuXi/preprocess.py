@@ -12,8 +12,8 @@ def main():
 
     for start_date in sorted(os.listdir(forecast_dir)):
         root = os.path.join(forecast_dir, start_date)
-        RMM1, RMM2, phase, amplitude, phase_sin, phase_cos, doy_sin, doy_cos, dates = [], [], [], [], [], [], [], [], []
-        RMM1_mean, RMM2_mean, phase_mean, amplitude_mean, phase_sin_mean, phase_cos_mean, doy_sin_mean, doy_cos_mean, dates_mean = [], [], [], [], [], [], [], [], []
+        RMM1, RMM2, phase, amplitude, phase_sin, phase_cos, doy_sin, doy_cos, year, dates = [], [], [], [], [], [], [], [], [], []
+        RMM1_mean, RMM2_mean, phase_mean, amplitude_mean, phase_sin_mean, phase_cos_mean, doy_sin_mean, doy_cos_mean, year_mean, dates_mean = [], [], [], [], [], [], [], [], [], []
         members = sorted(os.listdir(root))
         if len(members) < 52: print(f'Warning: only found {len(members)} members for {start_date}')
         for member in tqdm(members, f'Processing members for {start_date}'):
@@ -27,6 +27,8 @@ def main():
             member_df['doy_sin'] = np.sin(angle)
             member_df['doy_cos'] = np.cos(angle)
 
+            member_df['year'] = member_df.index.year
+
             if member == 'mean.txt':
                 RMM1_mean.append(member_df['RMM1'].values)
                 RMM2_mean.append(member_df['RMM2'].values)
@@ -36,6 +38,7 @@ def main():
                 phase_cos_mean.append(member_df['phase_cos'].values)
                 doy_sin_mean.append(member_df['doy_sin'].values)
                 doy_cos_mean.append(member_df['doy_cos'].values)
+                year_mean.append(member_df['year'].values)
                 dates_mean.append(member_df.index.values)
             else:
                 RMM1.append(member_df['RMM1'].values)
@@ -46,6 +49,7 @@ def main():
                 phase_cos.append(member_df['phase_cos'].values)
                 doy_sin.append(member_df['doy_sin'].values)
                 doy_cos.append(member_df['doy_cos'].values)
+                year.append(member_df['year'].values)
                 dates.append(member_df.index.values)
         
         assert np.all(dates == dates[0]), f'Found non-matching dates within ensemble members in {root}'
@@ -58,6 +62,7 @@ def main():
             phase_cos=np.array(phase_cos),
             doy_sin=np.array(doy_sin),
             doy_cos=np.array(doy_cos),
+            year=np.array(year),
             dates=np.array(dates[0]))
 
         assert np.all(dates[0] == dates_mean[0]), f'Found non-matching dates within ensemble mean in {root}'
@@ -70,6 +75,7 @@ def main():
             phase_cos=np.array(phase_cos_mean),
             doy_sin=np.array(doy_sin_mean),
             doy_cos=np.array(doy_cos_mean),
+            year=np.array(year_mean),
             dates=np.array(dates_mean[0]))
 
 if __name__ == "__main__":
