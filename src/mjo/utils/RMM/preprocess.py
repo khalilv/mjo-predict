@@ -10,6 +10,15 @@ def subset_rmm_data(df, start_year, end_year, compute_statistics):
     assert isinstance(df.index, pd.DatetimeIndex), "DataFrame must have datetime index"
 
     subset_df = df[(df.index.year >= start_year) & (df.index.year < end_year)]
+    phase = np.arctan2(subset_df['RMM2'],subset_df['RMM1'])
+    subset_df['phase_sin'] = np.sin(phase)
+    subset_df['phase_cos'] = np.cos(phase)
+    
+    doy = subset_df.index.day_of_year
+    angle = 2 * np.pi * doy / 366
+    subset_df['doy_sin'] = np.sin(angle)
+    subset_df['doy_cos'] = np.cos(angle)
+
 
     # Compute normalization statistics on train only
     if compute_statistics:
@@ -54,6 +63,10 @@ def main():
             RMM2=train_df['RMM2'].values,
             phase=train_df['phase'].values,
             amplitude=train_df['amplitude'].values,
+            doy_sin=train_df['doy_sin'].values,
+            doy_cos=train_df['doy_cos'].values,
+            phase_sin=train_df['phase_sin'].values,
+            phase_cos=train_df['phase_cos'].values,
             dates=train_df.index.values)
 
     np.savez(os.path.join(output_dir, 'val.npz'),
@@ -61,6 +74,10 @@ def main():
             RMM2=val_df['RMM2'].values,
             phase=val_df['phase'].values,
             amplitude=val_df['amplitude'].values,
+            doy_sin=val_df['doy_sin'].values,
+            doy_cos=val_df['doy_cos'].values,
+            phase_sin=val_df['phase_sin'].values,
+            phase_cos=val_df['phase_cos'].values,
             dates=val_df.index.values)
 
     np.savez(os.path.join(output_dir, 'test.npz'),
@@ -68,6 +85,10 @@ def main():
             RMM2=test_df['RMM2'].values,
             phase=test_df['phase'].values,
             amplitude=test_df['amplitude'].values,
+            doy_sin=test_df['doy_sin'].values,
+            doy_cos=test_df['doy_cos'].values,
+            phase_sin=test_df['phase_sin'].values,
+            phase_cos=test_df['phase_cos'].values,
             dates=test_df.index.values)
 
     # plot correlation with ABM indices
