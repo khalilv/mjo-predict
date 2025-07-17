@@ -24,10 +24,11 @@ def main():
     cli.model.set_input_length(len(cli.datamodule.get_history()) + 1)
     cli.model.set_output_length(len(cli.datamodule.get_predictions()))
     cli.model.set_in_variables(cli.datamodule.get_in_variables())
+    cli.model.set_date_variables(cli.datamodule.get_date_variables())
     cli.model.set_out_variables(cli.datamodule.get_out_variables())
+    cli.model.set_forecast_variables(cli.datamodule.get_forecast_variables())
     if cli.datamodule.normalize_data:
         cli.model.set_denormalization(cli.datamodule.get_transforms('out'))
-        cli.model.set_year_normalization(cli.datamodule.get_transforms('year'))
     cli.model.init_metrics()
     cli.model.init_network()
 

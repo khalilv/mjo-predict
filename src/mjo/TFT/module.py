@@ -45,8 +45,6 @@ class MJOForecastModule(LightningModule):
     def __init__(
         self,
         pretrained_path: str = "",
-        date_variables: list = [],
-        known_future_variables: list = [],
         num_static_components: int = 0,
         hidden_size: int = 64,
         lstm_layers: int = 1,
@@ -69,8 +67,6 @@ class MJOForecastModule(LightningModule):
         super().__init__()
         # Model architecture parameters
         self.pretrained_path = pretrained_path
-        self.date_variables = date_variables
-        self.known_future_variables = known_future_variables
         self.num_static_components = num_static_components
         self.hidden_size = hidden_size
         self.lstm_layers = lstm_layers
@@ -94,11 +90,12 @@ class MJOForecastModule(LightningModule):
         # Output and utility attributes
         self.save_outputs = save_outputs
         self.denormalization = None
-        self.year_normalization = None
 
         #placeholders
         self.in_variables = []
+        self.date_variables = []
         self.out_variables = []
+        self.forecast_variables = []
 
         self.save_hyperparameters(logger=False, ignore=["net"])
 
@@ -116,6 +113,9 @@ class MJOForecastModule(LightningModule):
     def set_in_variables(self, in_variables: list):
         self.in_variables = in_variables
     
+    def set_forecast_variables(self, forecast_variables: list):
+        self.forecast_variables = forecast_variables
+
     def set_input_length(self, input_length: int):
         self.input_chunk_length = input_length
 
@@ -129,9 +129,6 @@ class MJOForecastModule(LightningModule):
         self.out_variables = out_variables
         self.output_dim = (len(self.out_variables), 1)
     
-    def set_known_future_variables(self, known_future_variables: list):
-        self.known_future_variables = known_future_variables
-
     def init_metrics(self):
         denormalize = self.denormalization.denormalize if self.denormalization else None
 
@@ -145,9 +142,9 @@ class MJOForecastModule(LightningModule):
     def init_network(self):
         self.variables_meta = {
             "model_config": {
-                "reals_input": self.in_variables + self.date_variables + self.known_future_variables,
+                "reals_input": self.in_variables + self.date_variables + self.forecast_variables,
                 "time_varying_encoder_input": self.in_variables + self.date_variables,
-                "time_varying_decoder_input": self.date_variables + self.known_future_variables,
+                "time_varying_decoder_input": self.forecast_variables + self.date_variables,
                 "static_input": [],
                 "static_input_numeric": [],
                 "static_input_categorical": [],
@@ -177,35 +174,29 @@ class MJOForecastModule(LightningModule):
     def set_denormalization(self, denormalization):
         self.denormalization = denormalization
     
-    def set_year_normalization(self, normalization):
-        self.year_normalization = normalization
-    
     def setup(self, stage: str):
         if self.denormalization:
             self.denormalization.to(device=self.device, dtype=self.dtype)
-        if self.year_normalization:
-            self.year_normalization.to(device=self.device, dtype=self.dtype)
-    
     
     def training_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, forecast_mask, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+
+        target = residual if residual is not None else out_data
 
         x_in = prep_input(
             in_data=in_data,
+            in_date_encodings=in_date_encodings,
+            out_date_encodings=out_date_encodings,
             forecast_data=forecast_data,
-            forecast_mask=forecast_mask,
-            in_timestamps=in_timestamps,
             out_timestamps=out_timestamps,
             forecast_timestamps=forecast_timestamps,
-            device=self.device,
-            dtype=self.dtype,
-            year_normalization=self.year_normalization
-        )        
+        )       
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
-        batch_loss_mse = self.train_mse(preds=pred_data, targets=out_data)
-        batch_loss_mae = self.train_mae(preds=pred_data, targets=out_data)
+
+        batch_loss_mse = self.train_mse(preds=pred_data, targets=target)
+        batch_loss_mae = self.train_mae(preds=pred_data, targets=target)
         batch_loss = {**batch_loss_mae, **batch_loss_mse}
 
         for key in batch_loss.keys():
@@ -219,25 +210,24 @@ class MJOForecastModule(LightningModule):
         return batch_loss['mse_norm'] #batch_loss['mae_norm']
     
     def validation_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, forecast_mask, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+
+        target = residual if residual is not None else out_data
 
         x_in = prep_input(
             in_data=in_data,
+            in_date_encodings=in_date_encodings,
+            out_date_encodings=out_date_encodings,
             forecast_data=forecast_data,
-            forecast_mask=forecast_mask,
-            in_timestamps=in_timestamps,
             out_timestamps=out_timestamps,
             forecast_timestamps=forecast_timestamps,
-            device=self.device,
-            dtype=self.dtype,
-            year_normalization=self.year_normalization
         ) 
         
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
-        self.val_mse.update(preds=pred_data, targets=out_data)
-        self.val_mae.update(preds=pred_data, targets=out_data)
+        self.val_mse.update(preds=pred_data, targets=target)
+        self.val_mae.update(preds=pred_data, targets=target)
         return
         
     def on_validation_epoch_end(self):
@@ -264,27 +254,28 @@ class MJOForecastModule(LightningModule):
             os.makedirs(self.output_dir, exist_ok=False)
 
     def test_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, forecast_mask, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
-       
+        in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+
+        target = residual if residual is not None else out_data
+
         x_in = prep_input(
             in_data=in_data,
+            in_date_encodings=in_date_encodings,
+            out_date_encodings=out_date_encodings,
             forecast_data=forecast_data,
-            forecast_mask=forecast_mask,
-            in_timestamps=in_timestamps,
             out_timestamps=out_timestamps,
             forecast_timestamps=forecast_timestamps,
-            device=self.device,
-            dtype=self.dtype,
-            year_normalization=self.year_normalization
         ) 
 
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
-        self.test_mse.update(preds=pred_data, targets=out_data)
-        self.test_mae.update(preds=pred_data, targets=out_data)
+        self.test_mse.update(preds=pred_data, targets=target)
+        self.test_mae.update(preds=pred_data, targets=target)
 
         if self.save_outputs:
+            if forecast_data is not None:
+                pred_data = pred_data + out_data - residual #residual + forecast to recover prediction
             pred_data = self.denormalization.denormalize(pred_data)
             pred_data = pred_data.cpu().numpy()
             for b in range(pred_data.shape[0]):

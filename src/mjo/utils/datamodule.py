@@ -112,6 +112,12 @@ class MJOForecastDataModule(LightningDataModule):
     def get_in_variables(self):
         return self.in_variables
     
+    def get_forecast_variables(self):
+        if self.forecast_dir:
+            return [f'{v}_forecast' for v in self.in_variables]
+        else:
+            return []
+    
     def get_date_variables(self):
         return self.date_variables
     
