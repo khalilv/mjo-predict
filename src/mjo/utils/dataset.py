@@ -10,6 +10,7 @@ class NPZReader(IterableDataset):
     Args:
         file_path (str): Path to NPZ data file.
         in_variables (list): List of input variables.
+        date_variables (list): List of date variables.
         out_variables (list): List of output variables.
         predictions (list, optional): List of predictions elements to include in output. 
             If provided must all be positive integers. Defaults to [] (current timestamp).
@@ -23,6 +24,7 @@ class NPZReader(IterableDataset):
         self,
         file_path: str,
         in_variables: list,
+        date_variables: list,
         out_variables: list,
         predictions: list = [],
         history: list = [],
@@ -31,6 +33,7 @@ class NPZReader(IterableDataset):
         super().__init__()
         self.file_path = file_path
         self.in_variables = in_variables
+        self.date_variables = date_variables
         self.out_variables = out_variables
         self.predictions = sorted(predictions)
         self.history = sorted(history)
@@ -88,7 +91,7 @@ class NPZReader(IterableDataset):
         data_per_worker = {v: data_per_rank[v][worker_start_idx:worker_end_idx] for v in data_per_rank.keys()}
 
         print(f'Rank: {global_rank + 1}/{world_size} gets {rank_start_idx} to {rank_end_idx}. Worker {worker_id + 1}/{num_workers} in rank {global_rank + 1} gets {worker_start_idx} to {worker_end_idx}')
-        yield data_per_worker, self.in_variables, self.out_variables, self.predictions, self.history, self.predict_range, self.history_range
+        yield data_per_worker, self.in_variables, self.date_variables, self.out_variables, self.predictions, self.history, self.predict_range, self.history_range
 
 
 class Forecast(IterableDataset):
@@ -99,12 +102,10 @@ class Forecast(IterableDataset):
         load_forecast_members: bool = False,
         normalize_data: bool = False, 
         in_transforms = None, 
+        date_transforms = None,
         out_transforms = None,
         filter_mjo_events: bool = False,
         filter_mjo_phases: list = [],
-        load_forecast_samples: bool = False,
-        forecast_length: int = 42,
-        ensemble_members: int = 1,
     ) -> None:
         super().__init__()
         self.dataset = dataset
@@ -112,52 +113,49 @@ class Forecast(IterableDataset):
         self.load_forecast_members = load_forecast_members
         self.normalize_data = normalize_data
         self.in_transforms = in_transforms
+        self.date_transforms = date_transforms
         self.out_transforms = out_transforms
         self.filter_mjo_events = filter_mjo_events
         self.filter_mjo_phases = filter_mjo_phases
         self.forecast_shape = None
-        self.load_forecast_samples = load_forecast_samples
-        self.forecast_length = forecast_length
-        self.ensemble_members = ensemble_members
       
     def __iter__(self):
-        for data, in_variables, out_variables, predictions, history, predict_range, history_range in self.dataset:
+        for data, in_variables, date_variables, out_variables, predictions, history, predict_range, history_range in self.dataset:
             
             for t in range(history_range, len(data['dates']) - predict_range):
                 if (not self.filter_mjo_events or (self.filter_mjo_events and data['amplitude'][t] > 1)) and (not self.filter_mjo_phases or (self.filter_mjo_phases and data['phase'][t] in self.filter_mjo_phases)):
                     in_data = torch.stack([torch.tensor([data[v][t + h] for h in history + [0]], dtype=torch.get_default_dtype()) for v in in_variables], dim=1)
+                    in_date_encodings = torch.stack([torch.tensor([data[v][t + h] for h in history + [0]], dtype=torch.get_default_dtype()) for v in date_variables], dim=1)
                     in_timestamps = np.array([data['dates'][t + h] for h in history + [0]])
                     
                     if predict_range == 0:
-                        out_data = torch.stack([torch.tensor(data[v][t], dtype=torch.get_default_dtype()) for v in out_variables], dim=1)            
+                        out_data = torch.stack([torch.tensor(data[v][t], dtype=torch.get_default_dtype()) for v in out_variables], dim=1)
+                        out_date_encodings = torch.stack([torch.tensor(data[v][t], dtype=torch.get_default_dtype()) for v in date_variables], dim=1)            
                         out_timestamps = np.array(data['dates'][t])
                     else:
                         out_data = torch.stack([torch.tensor([data[v][t + p] for p in predictions], dtype=torch.get_default_dtype()) for v in out_variables], dim=1)
+                        out_date_encodings = torch.stack([torch.tensor([data[v][t + p] for p in predictions], dtype=torch.get_default_dtype()) for v in date_variables], dim=1)
                         out_timestamps = np.array([data['dates'][t + p] for p in predictions])
 
                     # if forecast_dir is provided, only load samples with future forecasts
                     if self.forecast_dir:
                         forecast_mean_file = f"{str(data['dates'][t]).split('T')[0]}_mean.npz"
-                        if os.path.exists(os.path.join(self.forecast_dir, forecast_mean_file)) and self.load_forecast_samples:
+                        if os.path.exists(os.path.join(self.forecast_dir, forecast_mean_file)):
                             forecast_npz_data = np.load(os.path.join(self.forecast_dir, forecast_mean_file))
-                            forecast_data = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in in_variables], dim=2)
+                            forecast_in = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in in_variables], dim=2)
+                            forecast_out = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in out_variables], dim=2).squeeze()
                             forecast_timestamps = np.array(forecast_npz_data['dates'])
-                            # assert len(forecast_timestamps) == len(out_timestamps), f'Found mismatch between forecast length {len(forecast_timestamps)} and predict length {len(out_timestamps)}'
+                            assert len(forecast_timestamps) == len(out_timestamps), f'Found mismatch between forecast length {len(forecast_timestamps)} and predict length {len(out_timestamps)}'
                             if self.load_forecast_members:
                                 forecast_members_file = f"{str(data['dates'][t]).split('T')[0]}_members.npz"
                                 if os.path.exists(os.path.join(self.forecast_dir, forecast_members_file)):
                                     forecast_npz_data = np.load(os.path.join(self.forecast_dir, forecast_members_file))
                                     forecast_member_data = torch.stack([torch.tensor(forecast_npz_data[v], dtype=torch.get_default_dtype()) for v in in_variables], dim=2)
-                                    forecast_data = torch.concatenate([forecast_data, forecast_member_data], dim=0)
+                                    forecast_in = torch.concatenate([forecast_in, forecast_member_data], dim=0)
                                     forecast_member_timestamps = np.array(forecast_npz_data['dates'])
                                     assert (forecast_timestamps == forecast_member_timestamps).all(), f"Found mismatch between forecast member timestamps and forecast mean timestamps for {str(data['dates'][t]).split('T')[0]}"     
-                            forecast_mask = torch.ones(forecast_data.shape[1], dtype=torch.get_default_dtype())
                             if self.normalize_data:
-                                forecast_data = self.in_transforms.normalize(forecast_data)
-                        elif not self.load_forecast_samples:
-                            forecast_data = torch.zeros((self.ensemble_members, self.forecast_length, len(in_variables)), dtype=torch.get_default_dtype())
-                            forecast_timestamps = out_timestamps[:self.forecast_length]
-                            forecast_mask = torch.zeros(self.forecast_length, dtype=torch.get_default_dtype())
+                                forecast_in = self.in_transforms.normalize(forecast_in)
                         else:
                             continue
                     
@@ -167,9 +165,14 @@ class Forecast(IterableDataset):
 
                     if self.normalize_data:
                         in_data = self.in_transforms.normalize(in_data)
+                        in_date_encodings = self.date_transforms.normalize(in_date_encodings)
                         out_data = self.out_transforms.normalize(out_data)
+                        out_date_encodings = self.date_transforms.normalize(out_date_encodings)
+
+                    if self.forecast_dir:
+                        residual = out_data - forecast_out #compute residual vs forecast mean
                     
-                    yield in_data, out_data, forecast_data if self.forecast_dir else None, forecast_mask if self.forecast_dir else None, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
+                    yield in_data, in_date_encodings, out_data, out_date_encodings, forecast_in if self.forecast_dir else None, residual if self.forecast_dir else None, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
 
 
 class ShuffleIterableDataset(IterableDataset):
@@ -200,20 +203,26 @@ class ShuffleIterableDataset(IterableDataset):
 def collate_fn(batch):
     batch = list(zip(*batch)) 
     in_data = torch.stack(batch[0])
-    out_data = torch.stack(batch[1])
-    forecast_data = torch.stack(batch[2]) if batch[2][0] is not None else None
-    forecast_mask = torch.stack(batch[3])if batch[3][0] is not None else None
-    in_variables = batch[4][0]
-    out_variables = batch[5][0]
-    in_timestamps = np.array(batch[6])
-    out_timestamps = np.array(batch[7])
-    forecast_timestamps = np.array(batch[8]) if batch[8][0] is not None else None
+    in_date_encodings = torch.stack(batch[1])
+    out_data = torch.stack(batch[2])
+    out_date_encodings = torch.stack(batch[3])
+    forecast_data = torch.stack(batch[4]) if batch[4][0] is not None else None
+    residual = torch.stack(batch[5]) if batch[5][0] is not None else None
+    in_variables = batch[6][0]
+    date_variables = batch[7][0]
+    out_variables = batch[8][0]
+    in_timestamps = np.array(batch[9])
+    out_timestamps = np.array(batch[10])
+    forecast_timestamps = np.array(batch[11]) if batch[11][0] is not None else None
     return (
         in_data,
+        in_date_encodings,
         out_data,
+        out_date_encodings,
         forecast_data,
-        forecast_mask,
+        residual,
         in_variables,
+        date_variables,
         out_variables,
         in_timestamps,
         out_timestamps,

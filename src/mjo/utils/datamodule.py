@@ -20,6 +20,7 @@ class MJOForecastDataModule(LightningDataModule):
     Args:
         root_dir (str): Root directory for preprocessed data.
         in_variables (list): List of input variables.
+        date_variables (list): List of date variables.
         out_variables (list): List of output variables.
         forecast_dir (str, optional): Root directory for forecast data
         load_forecast_members (bool, optional): If true, will load all forecast ensemble members for training. If false, will only load ensemble mean. 
@@ -41,6 +42,7 @@ class MJOForecastDataModule(LightningDataModule):
         self,
         root_dir: str,
         in_variables: list,
+        date_variables: list,
         out_variables: list,
         forecast_dir: str = None,
         load_forecast_members: bool = False,
@@ -53,9 +55,6 @@ class MJOForecastDataModule(LightningDataModule):
         batch_size: int = 64,
         num_workers: int = 0,
         pin_memory: bool = False,
-        load_forecast_samples: bool = False,
-        forecast_length: int = 42,
-        ensemble_members: int = 1,
     ):
         super().__init__()
         
@@ -64,6 +63,7 @@ class MJOForecastDataModule(LightningDataModule):
         
         self.root_dir = root_dir
         self.in_variables = in_variables
+        self.date_variables = date_variables
         self.out_variables = out_variables
         self.forecast_dir = forecast_dir
         self.load_forecast_members = load_forecast_members
@@ -76,9 +76,6 @@ class MJOForecastDataModule(LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.pin_memory = pin_memory
-        self.load_forecast_samples = load_forecast_samples
-        self.forecast_length = forecast_length
-        self.ensemble_members = ensemble_members
 
         self.train_file = os.path.join(self.root_dir, "train.npz")
         self.val_file = os.path.join(self.root_dir, "val.npz")
@@ -86,12 +83,12 @@ class MJOForecastDataModule(LightningDataModule):
         self.stats_file = os.path.join(self.root_dir, "statistics.npz")
 
         in_mean, in_std = self.get_normalization_stats(self.stats_file, self.in_variables)
+        date_mean, date_std = self.get_normalization_stats(self.stats_file, self.date_variables)
         out_mean, out_std = self.get_normalization_stats(self.stats_file, self.out_variables)
-        year_mean, year_std = self.get_year_stats(self.stats_file)
 
         self.in_transforms = NormalizeDenormalize(in_mean, in_std)
+        self.date_transforms = NormalizeDenormalize(date_mean, date_std)
         self.out_transforms = NormalizeDenormalize(out_mean, out_std)
-        self.year_transforms = NormalizeDenormalize(year_mean, year_std)
 
         self.data_train: Optional[IterableDataset] = None
         self.data_val: Optional[IterableDataset] = None
@@ -106,12 +103,6 @@ class MJOForecastDataModule(LightningDataModule):
         normalize_std = np.array([statistics[f"{var}_std"] for var in variables])
         return normalize_mean, normalize_std
     
-    def get_year_stats(self, file):
-        statistics = np.load(file)
-        year_mean = np.array([statistics['year_mean']])
-        year_std = np.array([statistics['year_std']])
-        return year_mean, year_std
-
     def get_history(self):
         return self.history
 
@@ -121,6 +112,9 @@ class MJOForecastDataModule(LightningDataModule):
     def get_in_variables(self):
         return self.in_variables
     
+    def get_date_variables(self):
+        return self.date_variables
+    
     def get_out_variables(self):
         return self.out_variables
     
@@ -129,8 +123,8 @@ class MJOForecastDataModule(LightningDataModule):
             return copy.deepcopy(self.in_transforms)
         elif group == 'out':
             return copy.deepcopy(self.out_transforms)
-        elif group == 'year':
-            return copy.deepcopy(self.year_transforms)
+        elif group == 'date':
+            return copy.deepcopy(self.date_transforms)
         else:
             raise ValueError(f"Invalid normalization group name: {group}")
 
@@ -143,8 +137,8 @@ class MJOForecastDataModule(LightningDataModule):
             self.in_transforms.update(mean, std)
         elif group == 'out':
             self.out_transforms.update(mean, std)
-        elif group == 'year':
-            self.out_transforms.update(mean, std)
+        elif group == 'date':
+            self.date_transforms.update(mean, std)
         else:
             raise ValueError(f"Invalid normalization group name: {group}")
 
@@ -155,6 +149,7 @@ class MJOForecastDataModule(LightningDataModule):
                     NPZReader(
                         file_path=self.train_file,
                         in_variables=self.in_variables,
+                        date_variables=self.date_variables,
                         out_variables=self.out_variables,
                         predictions=self.predictions,
                         history=self.history,
@@ -163,12 +158,10 @@ class MJOForecastDataModule(LightningDataModule):
                     load_forecast_members = self.load_forecast_members,
                     normalize_data = self.normalize_data,
                     in_transforms=self.in_transforms,
+                    date_transforms=self.date_transforms,
                     out_transforms=self.out_transforms,
                     filter_mjo_events=False,
                     filter_mjo_phases=self.filter_mjo_phases,
-                    load_forecast_samples=self.load_forecast_samples,
-                    forecast_length=self.forecast_length,
-                    ensemble_members=self.ensemble_members
                 ),
                 max_buffer_size=self.max_buffer_size,
             )
@@ -176,6 +169,7 @@ class MJOForecastDataModule(LightningDataModule):
                 NPZReader(
                     file_path=self.val_file,
                     in_variables=self.in_variables,
+                    date_variables=self.date_variables,
                     out_variables=self.out_variables,
                     predictions=self.predictions,
                     history=self.history,
@@ -185,12 +179,10 @@ class MJOForecastDataModule(LightningDataModule):
                 load_forecast_members = self.load_forecast_members,
                 normalize_data = self.normalize_data,
                 in_transforms=self.in_transforms,
+                date_transforms=self.date_transforms,
                 out_transforms=self.out_transforms,
                 filter_mjo_events=self.filter_mjo_events,
                 filter_mjo_phases=self.filter_mjo_phases,
-                load_forecast_samples=self.load_forecast_samples,
-                forecast_length=self.forecast_length,
-                ensemble_members=self.ensemble_members
             )
                 
         if stage == 'test':
@@ -198,6 +190,7 @@ class MJOForecastDataModule(LightningDataModule):
                 NPZReader(
                     file_path=self.test_file,
                     in_variables=self.in_variables,
+                    date_variables=self.date_variables,
                     out_variables=self.out_variables,
                     predictions=self.predictions,
                     history=self.history,
@@ -207,12 +200,10 @@ class MJOForecastDataModule(LightningDataModule):
                 load_forecast_members = self.load_forecast_members,
                 normalize_data = self.normalize_data,
                 in_transforms=self.in_transforms,
+                date_transforms=self.date_transforms,
                 out_transforms=self.out_transforms,
                 filter_mjo_events=self.filter_mjo_events,
                 filter_mjo_phases=self.filter_mjo_phases,
-                load_forecast_samples=self.load_forecast_samples,
-                forecast_length=self.forecast_length,
-                ensemble_members=self.ensemble_members
             )
 
     def train_dataloader(self):
