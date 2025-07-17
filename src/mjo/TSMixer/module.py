@@ -90,7 +90,6 @@ class MJOForecastModule(LightningModule):
         # Output and utility attributes
         self.save_outputs = save_outputs
         self.denormalization = None
-        self.year_normalization = None
 
         self.save_hyperparameters(logger=False, ignore=["net"])      
 
@@ -154,35 +153,28 @@ class MJOForecastModule(LightningModule):
     def set_denormalization(self, denormalization):
         self.denormalization = denormalization
     
-    def set_year_normalization(self, normalization):
-        self.year_normalization = normalization
-    
     def setup(self, stage: str):
         if self.denormalization:
             self.denormalization.to(device=self.device, dtype=self.dtype)
-        if self.year_normalization:
-            self.year_normalization.to(device=self.device, dtype=self.dtype)
             
     def training_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, forecast_mask, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+
+        target = residual if residual is not None else out_data
 
         x_in = prep_input(
             in_data=in_data,
+            in_date_encodings=in_date_encodings,
+            out_date_encodings=out_date_encodings,
             forecast_data=forecast_data,
-            forecast_mask=forecast_mask,
-            in_timestamps=in_timestamps,
             out_timestamps=out_timestamps,
             forecast_timestamps=forecast_timestamps,
-            device=self.device,
-            dtype=self.dtype,
-            year_normalization=self.year_normalization
-        ) 
-        
+        )       
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
-        batch_loss_mse = self.train_mse(preds=pred_data, targets=out_data)
-        batch_loss_mae = self.train_mae(preds=pred_data, targets=out_data)
+        batch_loss_mse = self.train_mse(preds=pred_data, targets=target)
+        batch_loss_mae = self.train_mae(preds=pred_data, targets=target)
         batch_loss = {**batch_loss_mae, **batch_loss_mse}
 
         for key in batch_loss.keys():
@@ -194,28 +186,27 @@ class MJOForecastModule(LightningModule):
 
         self.train_mse.reset()
         self.train_mae.reset()
-        return batch_loss['mae_norm']
+        return batch_loss['mse_norm']
     
     def validation_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, forecast_mask, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+
+        target = residual if residual is not None else out_data
 
         x_in = prep_input(
             in_data=in_data,
+            in_date_encodings=in_date_encodings,
+            out_date_encodings=out_date_encodings,
             forecast_data=forecast_data,
-            forecast_mask=forecast_mask,
-            in_timestamps=in_timestamps,
             out_timestamps=out_timestamps,
             forecast_timestamps=forecast_timestamps,
-            device=self.device,
-            dtype=self.dtype,
-            year_normalization=self.year_normalization
         ) 
         
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
-        self.val_mse.update(preds=pred_data, targets=out_data)
-        self.val_mae.update(preds=pred_data, targets=out_data)
+        self.val_mse.update(preds=pred_data, targets=target)
+        self.val_mae.update(preds=pred_data, targets=target)
         return
         
     def on_validation_epoch_end(self):
@@ -241,27 +232,28 @@ class MJOForecastModule(LightningModule):
             os.makedirs(self.output_dir, exist_ok=False)
 
     def test_step(self, batch: Any, batch_idx: int):
-        in_data, out_data, forecast_data, forecast_mask, in_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
+        in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
        
+        target = residual if residual is not None else out_data
+
         x_in = prep_input(
             in_data=in_data,
+            in_date_encodings=in_date_encodings,
+            out_date_encodings=out_date_encodings,
             forecast_data=forecast_data,
-            forecast_mask=forecast_mask,
-            in_timestamps=in_timestamps,
             out_timestamps=out_timestamps,
             forecast_timestamps=forecast_timestamps,
-            device=self.device,
-            dtype=self.dtype,
-            year_normalization=self.year_normalization
         ) 
 
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
-        self.test_mse.update(preds=pred_data, targets=out_data)
-        self.test_mae.update(preds=pred_data, targets=out_data)
+        self.test_mse.update(preds=pred_data, targets=target)
+        self.test_mae.update(preds=pred_data, targets=target)
        
         if self.save_outputs:
+            if forecast_data is not None:
+                pred_data = pred_data + out_data - residual #residual + forecast to recover prediction
             pred_data = self.denormalization.denormalize(pred_data)
             pred_data = pred_data.cpu().numpy()
             for b in range(pred_data.shape[0]):

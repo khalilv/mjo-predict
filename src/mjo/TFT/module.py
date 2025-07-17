@@ -285,7 +285,7 @@ class MJOForecastModule(LightningModule):
                     RMM1=pred_data[b,:,out_variables.index('RMM1')],
                     RMM2=pred_data[b,:,out_variables.index('RMM2')],
                     filename=os.path.join(self.output_dir, filename),
-                    method_str='TSMixer'
+                    method_str='TFT'
                 )
         return
     
