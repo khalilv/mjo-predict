@@ -102,12 +102,13 @@ data:
   in_variables:
     - "RMM1"
     - "RMM2"
-    - "amplitude"
-    - "phase_sin"
-    - "phase_cos"
+    # - "amplitude"
+    # - "phase_sin"
+    # - "phase_cos"
   date_variables:
     - "doy_sin"
     - "doy_cos"
+    - "year"
   out_variables:
     - "RMM1"
     - "RMM2"

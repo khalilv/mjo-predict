@@ -72,8 +72,8 @@ trainer:
 # ---------------------------- MODEL -------------------------------------------
 model:
   pretrained_path: ""
-  past_cov_dim: 2
-  future_cov_dim: 7
+  past_cov_dim: 3
+  future_cov_dim: 5
   static_cov_dim: 0
   nr_params: 1
   hidden_size: 512
@@ -99,12 +99,13 @@ data:
   in_variables:
     - "RMM1"
     - "RMM2"
-    - "amplitude"
-    - "phase_sin"
-    - "phase_cos"
+    # - "amplitude"
+    # - "phase_sin"
+    # - "phase_cos"
   date_variables:
     - "doy_sin"
     - "doy_cos"
+    - "year"
   out_variables:
     - "RMM1"
     - "RMM2"
