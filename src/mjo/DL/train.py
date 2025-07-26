@@ -3,6 +3,7 @@
 
 import os
 import sys
+import pytorch_lightning as pl
 from omegaconf import OmegaConf
 from mjo.utils.datamodule import MJOForecastDataModule
 from mjo.DL.module import MJOForecastModule
@@ -31,7 +32,8 @@ def main():
                 sys.argv[0], 
                 '--config', config_path,
                 f'--trainer.default_root_dir={group_dir}',
-                f'--data.filter_mjo_phases=[{",".join(map(str, group))}]'
+                f'--data.filter_mjo_phases=[{",".join(map(str, group))}]',
+                f'--trainer.logger.init_args.save_dir={os.path.join(group_dir, "logs")}',
                 ]
         
         # Initialize Lightning with the model and data modules, and instruct it to parse the config yml
@@ -45,6 +47,9 @@ def main():
         )
 
         os.makedirs(cli.trainer.default_root_dir, exist_ok=True)
+        for cb in cli.trainer.callbacks:
+            if isinstance(cb, pl.callbacks.ModelCheckpoint):
+                cb.dirpath = os.path.join(group_dir, "checkpoints")
 
         cli.model.set_input_length(len(cli.datamodule.get_predictions()))
         cli.model.set_input_dim(len(cli.datamodule.get_in_variables()))
