@@ -8,10 +8,10 @@ def prep_input(in_data: torch.Tensor, in_date_encodings: torch.Tensor, out_date_
         assert (forecast_timestamps == out_timestamps).all(), 'Found mismatch between forecast timestamps and out timestamps'
         forecast_data = forecast_data.permute(0, 2, 1, 3) # (B, T, E, V)
         forecast_future = forecast_data.flatten(2, 3) # (B, T, E*V) flatten ensemble members to seperate variables
-        x_future = torch.cat([forecast_future, out_date_encodings], dim=-1)
+        x_future = torch.cat([forecast_future, out_date_encodings], dim=-1) if out_date_encodings is not None else forecast_future
     else:
         x_future = out_date_encodings
     
-    x_past =  torch.cat([in_data, in_date_encodings], dim=-1)
+    x_past =  torch.cat([in_data, in_date_encodings], dim=-1) if in_date_encodings is not None else in_data
     x_static = None  
     return (x_past, x_future, x_static)

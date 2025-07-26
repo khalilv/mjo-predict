@@ -125,16 +125,16 @@ class Forecast(IterableDataset):
             for t in range(history_range, len(data['dates']) - predict_range):
                 if (not self.filter_mjo_events or (self.filter_mjo_events and data['amplitude'][t] > 1)) and (not self.filter_mjo_phases or (self.filter_mjo_phases and data['phase'][t] in self.filter_mjo_phases)):
                     in_data = torch.stack([torch.tensor([data[v][t + h] for h in history + [0]], dtype=torch.get_default_dtype()) for v in in_variables], dim=1)
-                    in_date_encodings = torch.stack([torch.tensor([data[v][t + h] for h in history + [0]], dtype=torch.get_default_dtype()) for v in date_variables], dim=1)
+                    in_date_encodings = torch.stack([torch.tensor([data[v][t + h] for h in history + [0]], dtype=torch.get_default_dtype()) for v in date_variables], dim=1) if len(date_variables) > 0 else None
                     in_timestamps = np.array([data['dates'][t + h] for h in history + [0]])
                     
                     if predict_range == 0:
                         out_data = torch.stack([torch.tensor(data[v][t], dtype=torch.get_default_dtype()) for v in out_variables], dim=1)
-                        out_date_encodings = torch.stack([torch.tensor(data[v][t], dtype=torch.get_default_dtype()) for v in date_variables], dim=1)            
+                        out_date_encodings = torch.stack([torch.tensor(data[v][t], dtype=torch.get_default_dtype()) for v in date_variables], dim=1) if len(date_variables) > 0 else None         
                         out_timestamps = np.array(data['dates'][t])
                     else:
                         out_data = torch.stack([torch.tensor([data[v][t + p] for p in predictions], dtype=torch.get_default_dtype()) for v in out_variables], dim=1)
-                        out_date_encodings = torch.stack([torch.tensor([data[v][t + p] for p in predictions], dtype=torch.get_default_dtype()) for v in date_variables], dim=1)
+                        out_date_encodings = torch.stack([torch.tensor([data[v][t + p] for p in predictions], dtype=torch.get_default_dtype()) for v in date_variables], dim=1) if len(date_variables) > 0 else None
                         out_timestamps = np.array([data['dates'][t + p] for p in predictions])
 
                     # if forecast_dir is provided, only load samples with future forecasts
@@ -165,9 +165,9 @@ class Forecast(IterableDataset):
 
                     if self.normalize_data:
                         in_data = self.in_transforms.normalize(in_data)
-                        in_date_encodings = self.date_transforms.normalize(in_date_encodings)
+                        in_date_encodings = self.date_transforms.normalize(in_date_encodings) if in_date_encodings is not None else None
                         out_data = self.out_transforms.normalize(out_data)
-                        out_date_encodings = self.date_transforms.normalize(out_date_encodings)
+                        out_date_encodings = self.date_transforms.normalize(out_date_encodings) if out_date_encodings is not None else None
 
                     if self.forecast_dir:
                         residual = out_data - forecast_out #compute residual vs forecast mean
@@ -203,9 +203,9 @@ class ShuffleIterableDataset(IterableDataset):
 def collate_fn(batch):
     batch = list(zip(*batch)) 
     in_data = torch.stack(batch[0])
-    in_date_encodings = torch.stack(batch[1])
+    in_date_encodings = torch.stack(batch[1]) if batch[1][0] is not None else None
     out_data = torch.stack(batch[2])
-    out_date_encodings = torch.stack(batch[3])
+    out_date_encodings = torch.stack(batch[3]) if batch[3][0] is not None else None
     forecast_data = torch.stack(batch[4]) if batch[4][0] is not None else None
     residual = torch.stack(batch[5]) if batch[5][0] is not None else None
     in_variables = batch[6][0]

@@ -7,10 +7,10 @@ from mjo.utils.RMM.io import load_rmm_indices, save_rmm_indices
 
 
 PHASE_GROUP_MAP = {
-    1: 1, 8: 1,
-    2: 2, 3: 2,
-    4: 3, 5: 3,
-    6: 4, 7: 4
+    1: 1, 8: 8,
+    2: 2, 3: 3,
+    4: 4, 5: 5,
+    6: 6, 7: 7
 }
 
 def get_grouped_phase(phase, use_grouping=False):
@@ -127,11 +127,11 @@ member = 'mean'
 # Grouped mean bias correction
 train_forecast, train_target = load_data(forecast_dir, ground_truth_path, train_start, train_end, member, use_grouping=True)
 mean_bias_model = compute_mean_bias_model(train_forecast, train_target)
-save_dir = '/glade/derecho/scratch/kvirji/mjo-predict/exps/baselines/2020-2021/phase_groups/mean_bias'
+save_dir = '/glade/derecho/scratch/kvirji/mjo-predict/exps/baselines/2020-2021/eight_groups/mean_bias/'
 run_inference(forecast_dir, save_dir, ground_truth_path, mean_bias_model, train_end, test_end, member, method='mean_bias', use_grouping=True)
 
 # Grouped multilinear regression
 train_forecast, train_target = load_data(forecast_dir, ground_truth_path, train_start, train_end, member, use_grouping=True)
 mlr_model = fit_multilinear_bias_model(train_forecast, train_target)
-save_dir = '/glade/derecho/scratch/kvirji/mjo-predict/exps/baselines/2020-2021/phase_groups/MLR'
+save_dir = '/glade/derecho/scratch/kvirji/mjo-predict/exps/baselines/2020-2021/eight_groups/MLR/'
 run_inference(forecast_dir, save_dir, ground_truth_path, mlr_model, train_end, test_end, member, method='mlr', use_grouping=True)
