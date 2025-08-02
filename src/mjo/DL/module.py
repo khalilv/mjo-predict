@@ -6,7 +6,7 @@ import os
 import torch
 from typing import Any
 from pytorch_lightning import LightningModule
-from mjo.DL.model import PerLeadTimeMLP
+from mjo.DL.model import PerLeadTimeMLP, PerLeadTimeLSTM
 from mjo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from mjo.utils.metrics import MSE, MAE
 from mjo.utils.RMM.io import save_rmm_indices
@@ -99,11 +99,16 @@ class MJOForecastModule(LightningModule):
         self.test_mae = MAE(vars=self.out_variables, transforms=denormalize, suffix=None)
 
     def init_network(self):
-        self.net = PerLeadTimeMLP(
+        # self.net = PerLeadTimeMLP(
+        #     input_dim=self.input_dim,
+        #     hidden_dim=self.hidden_size,
+        #     num_leads=self.input_length, 
+        #     depth=self.depth
+        # )
+        self.net = PerLeadTimeLSTM(
             input_dim=self.input_dim,
             hidden_dim=self.hidden_size,
-            num_leads=self.input_length, 
-            depth=self.depth
+            num_leads=self.input_length
         )
         if hasattr(self, "pretrained_path") and self.pretrained_path and len(self.pretrained_path) > 0:
             self.load_pretrained_weights(self.pretrained_path)
