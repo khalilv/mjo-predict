@@ -81,23 +81,21 @@ class PerLeadTimeLSTM(nn.Module):
             xt = x[:, t, :].unsqueeze(1)  # shape: (B, 1, input_dim)
             yt = self.models[t](xt)       # shape: (B, input_dim)
             outputs.append(yt)
-        return torch.stack(outputs, dim=1)  # (B, T, input_dim)
+        return torch.concat(outputs, dim=1)  # (B, T, input_dim)
 
 
 class LSTMBlock(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super().__init__()
-        self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dim, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, output_dim)
+    def __init__(self, input_size=2, hidden_size=10, output_size=2):
+        super(LSTMBlock, self).__init__()
+        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, batch_first=True)
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.activation = nn.Tanh()
+        self.fc2 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        """
-        x: (B, 1, input_dim)
-        Returns: (B, output_dim)
-        """
-        B = x.size(0)
-        h0 = torch.zeros(1, B, self.lstm.hidden_size, device=x.device, dtype=x.dtype)
-        c0 = torch.zeros(1, B, self.lstm.hidden_size, device=x.device, dtype=x.dtype)
-        out, _ = self.lstm(x, (h0, c0))  # out: (B, 1, hidden_dim)
-        out = out.squeeze(1)            # (B, hidden_dim)
-        return self.fc(out)             # (B, output_dim)
+        # x shape: (batch, seq_len=1, input_size=2)
+        lstm_out, _ = self.lstm(x)         # (batch, 1, hidden)
+        x = self.fc1(lstm_out)             # (batch, 1, hidden)
+        x = self.activation(x)
+        x = self.fc2(x)                    # (batch, 1, output_size=2)
+        return x
