@@ -201,7 +201,7 @@ def bivariate_mse_vs_lead_time_plot(lead_times, bmsea, bmsep, labels, output_fil
     assert len(bmsea) == len(labels), 'Number of labels must match number of bmsea sources'
     assert len(bmsep) == len(labels), 'Number of labels must match number of bmsep sources'
 
-    colors = plt.cm.cividis(np.linspace(0, 1, len(labels)))
+    colors = plt.cm.viridis(np.linspace(0, 1, len(labels)))
     plt.figure(figsize=(8, 5))
     for i, label in enumerate(labels):
         plt.plot(lead_times[i], bmsea[i], color=colors[i], linestyle='-', label=f'{label} (Amplitude)')
@@ -221,7 +221,7 @@ def bivariate_mse_vs_init_date_plot(init_dates, bmse, labels, output_filename=No
     assert len(bmse) == len(labels), 'Number of labels must match number of bmse sources'
     assert len(init_dates) == len(bmse), 'Number of bmse sources must match number of init dates'
 
-    colors = plt.cm.cividis(np.linspace(0, 1, len(labels)))
+    colors = plt.cm.viridis(np.linspace(0, 1, len(labels)))
     plt.figure(figsize=(8, 5))
     for i, label in enumerate(labels):
         plt.plot(init_dates[i], bmse[i], color=colors[i], linestyle='-', label=f'{label}')
@@ -238,7 +238,7 @@ def bivariate_mse_vs_init_date_plot(init_dates, bmse, labels, output_filename=No
 
 
 def lag_correlation_plot(corrs: np.ndarray, timesteps: np.ndarray, variables: list, title: str, output_filename: str = None):
-    colors = plt.cm.cividis(np.linspace(0, 1, len(variables)))
+    colors = plt.cm.viridis(np.linspace(0, 1, len(variables)))
 
     for i,var in enumerate(variables):
         plt.plot(timesteps, corrs[i], linestyle='-', color=colors[i], label=var)
