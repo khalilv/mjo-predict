@@ -181,7 +181,7 @@ def phase_space_composite_plot(pred_composites, gt_composites, labels, gt_label,
 def bivariate_correlation_vs_lead_time_plot(lead_times, correlations, labels, output_filename=None):
     assert len(correlations) == len(labels), 'Number of labels must match number of correlation sources'
     
-    colors = plt.cm.cividis(np.linspace(0, 1, len(labels)))
+    colors = plt.cm.viridis(np.linspace(0, 1, len(labels)))
     plt.figure(figsize=(8, 5))
     for i, label in enumerate(labels):
         plt.plot(lead_times[i], correlations[i], color=colors[i], label=label)

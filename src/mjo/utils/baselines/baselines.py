@@ -120,7 +120,7 @@ def inference(forecast_dir, save_dir, ground_truth_path, model, start_date, end_
 forecast_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi'
 ground_truth_path = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt"
 train_start = '1979-01-01'
-train_end = '2020-01-01'
+train_end = '2019-01-01'
 test_end = '2023-01-01'
 member = 'mean'
 

@@ -33,7 +33,7 @@ def main():
         
     train_start_year = 1979
     val_start_year = 2018
-    test_start_year = 2020
+    test_start_year = 2019
     test_end_year = 2022
     input_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt"
     output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed"
