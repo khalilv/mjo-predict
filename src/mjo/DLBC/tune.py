@@ -6,15 +6,15 @@ import yaml
 import optuna
 
 from mjo.utils.datamodule import MJOForecastDataModule
-from mjo.DL.module import MJOForecastModule
+from mjo.DLBC.module import MJOForecastModule
 from pytorch_lightning.cli import LightningCLI
 from optuna_integration import PyTorchLightningPruningCallback
 
 def objective(trial):
     
     # hyperparameters to optimize
-    hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 10)
-    depth = trial.suggest_int('num_blocks', 2, 6, step=1)
+    # hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 10)
+    # depth = trial.suggest_int('num_blocks', 2, 6, step=1)
     lr = trial.suggest_float('lr', 1e-7, 1e-3, log=True)
     
     # Initialize Lightning with the model and data modules, and instruct it to parse the config yml
@@ -37,8 +37,8 @@ def objective(trial):
     if cli.datamodule.normalize_data:
         cli.model.set_denormalization(cli.datamodule.get_transforms('out'))
     cli.model.init_metrics()
-    cli.model.hidden_size = hidden_size
-    cli.model.depth = depth
+    # cli.model.hidden_size = hidden_size
+    # cli.model.depth = depth
     cli.model.lr = lr
     cli.model.init_network()
 
@@ -94,7 +94,7 @@ def main():
     os.makedirs(root_dir, exist_ok=True)
 
     # Run optimization
-    study, _ = run_optimization(n_trials=50, root_dir=root_dir)
+    study, _ = run_optimization(n_trials=25, root_dir=root_dir)
 
     # Save best trial params to YAML in root_dir
     trial = study.best_trial

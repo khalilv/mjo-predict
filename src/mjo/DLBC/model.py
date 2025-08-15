@@ -46,7 +46,7 @@ class PerLeadTimeMLP(nn.Module):
         return torch.stack(preds, dim=1)  # (B, T, input_dim)
     
 class PerLeadTimeLSTM(nn.Module):
-    def __init__(self, input_dim=2, hidden_dim=10, num_leads=42):
+    def __init__(self, input_dim=2, hidden_dim=10, output_dim=2, num_leads=42):
         """
         Initializes a separate LSTM model for each lead time.
 
@@ -59,7 +59,7 @@ class PerLeadTimeLSTM(nn.Module):
         self.num_leads = num_leads
         self.models = nn.ModuleList([
             nn.Sequential(
-                LSTMBlock(input_dim, hidden_dim, input_dim)
+                LSTMBlock(input_dim, hidden_dim, output_dim)
             ) for _ in range(num_leads)
         ])
 

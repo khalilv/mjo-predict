@@ -3,7 +3,7 @@
 
 import os
 from mjo.utils.datamodule import MJOForecastDataModule
-from mjo.DL.module import MJOForecastModule
+from mjo.DLBC.module import MJOForecastModule
 from pytorch_lightning.cli import LightningCLI
 
 # 1) entry point high-level class for training bias correction modules
