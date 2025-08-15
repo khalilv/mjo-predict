@@ -194,7 +194,7 @@ forecast_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi'
 ground_truth_path = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt"
 train_start = '1979-01-01'
 train_end = '2019-01-01'
-test_end = '2023-01-01'
+test_end = '2022-01-01'
 member = 'mean'
 n_groups = 'eight_groups'
 

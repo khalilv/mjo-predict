@@ -149,11 +149,12 @@ def main():
             init_dates.append([datetime.strptime(d, "%Y-%m-%d") for d in date_strs])
             bmse_per_init_dates.append(bmse_per_init_date[0] + bmse_per_init_date[1])
 
-    
+    plot_labels = deterministic_labels + ensemble_member_labels
+
     bivariate_correlation_vs_lead_time_plot(
         lead_times=[np.arange(1, max_lead_time + 1) for max_lead_time in max_lead_times],
         correlations=correlations,
-        labels=deterministic_labels + ensemble_member_labels,
+        labels=plot_labels,
         output_filename=os.path.join(output_dir, 'bcorr.png')
     )
 
@@ -161,18 +162,17 @@ def main():
         lead_times=[np.arange(1, max_lead_time + 1) for max_lead_time in max_lead_times],
         bmsea=amplitude_errors,
         bmsep=phase_errors,
-        labels=deterministic_labels + ensemble_member_labels,
+        labels=plot_labels,
         output_filename=os.path.join(output_dir, 'bmse.png')
     )
 
     bivariate_mse_vs_init_date_plot(
         init_dates=init_dates,
         bmse=bmse_per_init_dates,
-        labels=deterministic_labels + ensemble_member_labels,
+        labels=plot_labels,
         output_filename=os.path.join(output_dir, 'bmse_init_date.png')
     )
 
-    plot_labels = deterministic_labels + ensemble_member_labels
     bmse_diff_from_last = [b - bmse_per_init_dates[-1][:len(b)] for b in bmse_per_init_dates]
     bivariate_mse_vs_init_date_plot(
         init_dates=init_dates,
@@ -188,12 +188,6 @@ def main():
             title='Bivariate correlation per month',
             output_filename=os.path.join(output_dir, f'bcorr_per_month_{plot_labels[l]}.png')
         )
-
-
-
-    
-
-
 
 if __name__ == "__main__":
     main()
