@@ -33,10 +33,10 @@ def main():
         
     train_start_year = 1979
     val_start_year = 2018
-    test_start_year = 2019
+    test_start_year = 2021
     test_end_year = 2022
     input_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt"
-    output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed"
+    output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed/2021"
     abm_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/ABM/rmm.74toRealtime.txt"
 
     os.makedirs(output_dir, exist_ok=True)
