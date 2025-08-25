@@ -1,6 +1,7 @@
 import math
 import numpy as np
 from matplotlib import pyplot as plt
+import matplotlib.ticker as ticker
 
 def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplitude, gt_amplitude, pred_label = None, gt_label = None, output_filename = None):
     pred_label = pred_label if pred_label else 'Predictions'
@@ -190,6 +191,11 @@ def bivariate_correlation_vs_lead_time_plot(lead_times, correlations, labels, ou
     plt.ylabel('Bivariate Correlation')
     plt.title('Bivariate Correlation vs Lead Time')
     plt.legend()
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))   # grid every day
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{int(x)}" if x % 10 == 0 else ""))  # label every 10 days
+    plt.grid(which='major', axis='x', linestyle='-', linewidth=0.5)
+    plt.grid(which='major', axis='y')
     plt.tight_layout()
     if output_filename:
         plt.savefig(output_filename, dpi=300, bbox_inches='tight')
@@ -197,20 +203,28 @@ def bivariate_correlation_vs_lead_time_plot(lead_times, correlations, labels, ou
     else:
         plt.show()
 
-def bivariate_mse_vs_lead_time_plot(lead_times, bmsea, bmsep, labels, output_filename=None):
+def bivariate_mse_vs_lead_time_plot(lead_times, bmsea, bmsep, labels, output_filename=None, combined=False):
     assert len(bmsea) == len(labels), 'Number of labels must match number of bmsea sources'
     assert len(bmsep) == len(labels), 'Number of labels must match number of bmsep sources'
 
     colors = plt.cm.viridis(np.linspace(0, 1, len(labels)))
     plt.figure(figsize=(8, 5))
     for i, label in enumerate(labels):
-        plt.plot(lead_times[i], bmsea[i], color=colors[i], linestyle='-', label=f'{label} (Amplitude)')
-        plt.plot(lead_times[i], bmsep[i], color=colors[i], linestyle='--', label=f'{label} (Phase)')
+        if combined:
+            plt.plot(lead_times[i], bmsea[i] + bmsep[i], color=colors[i], linestyle='-', label=f'{label}')
+        else:
+            plt.plot(lead_times[i], bmsea[i], color=colors[i], linestyle='-', label=f'{label} (Amplitude)')
+            plt.plot(lead_times[i], bmsep[i], color=colors[i], linestyle='--', label=f'{label} (Phase)')
     plt.xlabel('Lead Time (days)')
     plt.ylabel('Bivariate Mean Squared Error')
     plt.title('Bivariate Mean Squared Error vs Lead Time')
     plt.legend()
     plt.tight_layout()
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))   # grid every day
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{int(x)}" if x % 10 == 0 else ""))  # label every 10 days
+    plt.grid(which='major', axis='x', linestyle='-', linewidth=0.5)
+    plt.grid(which='major', axis='y')
     if output_filename:
         plt.savefig(output_filename, dpi=300, bbox_inches='tight')
         plt.close()

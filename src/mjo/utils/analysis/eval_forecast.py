@@ -163,7 +163,17 @@ def main():
         bmsea=amplitude_errors,
         bmsep=phase_errors,
         labels=plot_labels,
-        output_filename=os.path.join(output_dir, 'bmse.png')
+        output_filename=os.path.join(output_dir, 'bmse_components.png'),
+        combined=False
+    )
+
+    bivariate_mse_vs_lead_time_plot(
+        lead_times=[np.arange(1, max_lead_time + 1) for max_lead_time in max_lead_times],
+        bmsea=amplitude_errors,
+        bmsep=phase_errors,
+        labels=plot_labels,
+        output_filename=os.path.join(output_dir, 'bmse.png'),
+        combined=True
     )
 
     bivariate_mse_vs_init_date_plot(

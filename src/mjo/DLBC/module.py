@@ -23,7 +23,6 @@ class MJOForecastModule(LightningModule):
     Args:
         pretrained_path (str): Path to pre-trained checkpoint. Default: "".
         hidden_size (int): Hidden state size of the model. Default: 64.
-        depth (int): Depth of the model. Default: 2.
         lr (float): Learning rate. Default: 5e-4.
         beta_1 (float): Beta 1 for AdamW optimizer. Default: 0.9.
         beta_2 (float): Beta 2 for AdamW optimizer. Default: 0.99.
@@ -37,7 +36,6 @@ class MJOForecastModule(LightningModule):
         self,
         pretrained_path: str = "",      
         hidden_size: int = 64,
-        depth: int = 2,
         lr: float = 5e-4,
         beta_1: float = 0.9,
         beta_2: float = 0.99,
@@ -50,7 +48,6 @@ class MJOForecastModule(LightningModule):
         # Model architecture parameters
         self.pretrained_path = pretrained_path        
         self.hidden_size = hidden_size
-        self.depth = depth
 
         # Optimization and scheduler parameters
         self.lr = lr
@@ -104,10 +101,10 @@ class MJOForecastModule(LightningModule):
         #     input_dim=self.input_dim,
         #     hidden_dim=self.hidden_size,
         #     num_leads=self.input_length, 
-        #     depth=self.depth
+        #     depth=3
         # )
         self.net = PerLeadTimeLSTM(
-            input_dim=self.input_dim + 1,
+            input_dim=self.input_dim,
             hidden_dim=self.hidden_size,
             num_leads=self.input_length, 
             output_dim=self.input_dim
@@ -122,79 +119,39 @@ class MJOForecastModule(LightningModule):
     def training_step(self, batch: Any, batch_idx: int):
         in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        # target = residual if residual is not None else out_data
+        target = out_data
 
-        # x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
-        eps = 1e-8
-        forecast_data = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
-
-        x_in, _, low_amplitude_forecast_mask = self.prep_phase_input(forecast_data, eps)
+        x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
         pred_data = self.net.forward(x=x_in) #(B, T, 2)
-        normalized_pred_data = F.normalize(pred_data, dim=-1, eps=eps)  
 
+        batch_loss_mse = self.train_mse(preds=pred_data, targets=target)
+        batch_loss_mae = self.train_mae(preds=pred_data, targets=target)
+        batch_loss = {**batch_loss_mae, **batch_loss_mse}
 
-        out_amplitude = torch.norm(out_data, dim=-1, keepdim=True).clamp_min(eps)
-        normalized_out_data = out_data / out_amplitude
+        for key in batch_loss.keys():
+            self.log(
+                "train/" + key,
+                batch_loss[key],
+                prog_bar=True,
+            )
 
-        mask = (low_amplitude_forecast_mask > 0).bool() & (out_amplitude.squeeze(-1) > 1e-3) 
-        
-        if mask.any():
-            batch_loss_mse = self.train_mse(preds=normalized_pred_data[mask], targets=normalized_out_data[mask])
-            batch_loss_mae = self.train_mae(preds=normalized_pred_data[mask], targets=normalized_out_data[mask])
-            batch_loss = {**batch_loss_mae, **batch_loss_mse}
-            for key in batch_loss.keys():
-                self.log(
-                    "train/" + key,
-                    batch_loss[key],
-                    prog_bar=True,
-                )
-
-            self.train_mse.reset()
-            self.train_mae.reset()
-            return batch_loss['mse_norm']
-        else:
-            raise RuntimeError("No strong amplitude samples were found in the training batch.")
+        self.train_mse.reset()
+        self.train_mae.reset()
+        return batch_loss['mse_norm']
     
-    def prep_phase_input(self, forecast_data: torch.Tensor, eps: float = 1e-8):
-        """
-        forecast_data: (B, T, 2) = [rmm1, rmm2]
-        returns:
-        x_in: (B, T, 2 or 3) -> [cos φ_f, sin φ_f] (+ amplitude if include_amp)
-        A:    (B, T, 1)      -> amplitude ||x||
-        mask: (B, T)         -> 1 where amplitude > eps else 0
-        """
-        amplitude = torch.norm(forecast_data, dim=-1, keepdim=True)              # (B,T,1)
-        phase = forecast_data / amplitude.clamp_min(eps)  
-        x_in = torch.cat([phase, amplitude], dim=-1)                             # (B, T, 3)                        
-        mask = (amplitude > eps).squeeze(-1).to(forecast_data.dtype)             # (B,T)
-        return x_in, amplitude, mask
-
-    
+   
     def validation_step(self, batch: Any, batch_idx: int):
         in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        # target = residual if residual is not None else out_data
+        target = out_data
 
-        # x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
-        eps = 1e-8
-        forecast_data = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
+        x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
+        pred_data = self.net.forward(x=x_in)
 
-        x_in, _, low_amplitude_forecast_mask = self.prep_phase_input(forecast_data, eps)
-        pred_data = self.net.forward(x=x_in) #(B, T, 2)
-        normalized_pred_data = F.normalize(pred_data, dim=-1, eps=eps)  
-
-
-        out_amplitude = torch.norm(out_data, dim=-1, keepdim=True).clamp_min(eps)
-        normalized_out_data = out_data / out_amplitude
-
-        mask = (low_amplitude_forecast_mask > 0).bool() & (out_amplitude.squeeze(-1) > 1e-3) 
-        
-        if mask.any():
-            self.val_mse.update(preds=normalized_pred_data[mask], targets=normalized_out_data[mask])
-            self.val_mae.update(preds=normalized_pred_data[mask], targets=normalized_out_data[mask])
-        else:
-            raise RuntimeError("No strong amplitude samples were found in the validation batch.")
+        self.val_mse.update(preds=pred_data, targets=target)
+        self.val_mae.update(preds=pred_data, targets=target)
         return
+        
         
     def on_validation_epoch_end(self):
         val_mse = self.val_mse.compute()
@@ -221,24 +178,15 @@ class MJOForecastModule(LightningModule):
     def test_step(self, batch: Any, batch_idx: int):
         in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        #target = residual if residual is not None else out_data
+        target = residual if residual is not None else out_data
 
-        # x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
-        eps = 1e-8
-        forecast_data = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
+        x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
+        pred_data = self.net.forward(x=x_in)
 
-        x_in, forecast_amplitude, _ = self.prep_phase_input(forecast_data, eps)
-        pred_data = self.net.forward(x=x_in) #(B, T, 2)
-        normalized_pred_data = F.normalize(pred_data, dim=-1, eps=eps)  
-
-        out_amplitude = torch.norm(out_data, dim=-1, keepdim=True).clamp_min(eps)
-        normalized_out_data = out_data / out_amplitude
-         
-        self.test_mse.update(preds=normalized_pred_data, targets=normalized_out_data)
-        self.test_mae.update(preds=normalized_pred_data, targets=normalized_out_data)
-       
+        self.test_mse.update(preds=pred_data, targets=target)
+        self.test_mae.update(preds=pred_data, targets=target)
+              
         if self.save_outputs:
-            pred_data = normalized_pred_data * forecast_amplitude
             # if forecast_data is not None:
             #     pred_data = pred_data + out_data - residual #residual + forecast to recover prediction
             pred_data = self.denormalization.denormalize(pred_data)
