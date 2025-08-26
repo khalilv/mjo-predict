@@ -72,7 +72,7 @@ trainer:
 # ---------------------------- MODEL -------------------------------------------
 model:
   pretrained_path: ""
-  hidden_size: 10
+  hidden_size: 16
   lr: 1e-4
   beta_1: 0.9
   beta_2: 0.99
