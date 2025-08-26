@@ -30,11 +30,12 @@ def compute_bmse(predict_rmm1, ground_truth_rmm1, predict_rmm2, ground_truth_rmm
     assert np.isclose(bmse, bmsea + bmsep), f'Found mismatch between BMSE {bmse} and components BMSEa {bmsea}, BMSEp {bmsep}'
     return [bmsea, bmsep]
 
-def load_forecast(predict_dir, start_date, member=None):
+def load_forecast(predict_dir, start_date, end_date, member=None):
     dataframes = []
     max_lt = -1
     start = datetime.strptime(start_date, "%Y-%m-%d")
-    dates = sorted([d for d in os.listdir(predict_dir) if datetime.strptime(d, "%Y-%m-%d" if member else "%Y-%m-%d.txt") > start])
+    end = datetime.strptime(end_date, "%Y-%m-%d")
+    dates = sorted([d for d in os.listdir(predict_dir) if start <= datetime.strptime(d, "%Y-%m-%d" if member else "%Y-%m-%d.txt") < end])
     for d in tqdm(dates, f'Loading data from {predict_dir}'):
         filepath = os.path.join(predict_dir, d, f'{member}.txt') if member else os.path.join(predict_dir, d)
         df = load_rmm_indices(filepath)
@@ -93,7 +94,8 @@ def compute_metric_across_months(dataframes, max_lt, ground_truth_df, metric_fn)
 
 def main():
 
-    start_date = '2020-01-01'
+    start_date = '2019-01-01'
+    end_date = '2021-11-18'
     deterministic_dirs = [
         '/glade/derecho/scratch/kvirji/mjo-predict/exps/TSMixer/FuXi/ensemble_mean/no_hist/logs/version_0/outputs',
     ]
@@ -117,7 +119,7 @@ def main():
     init_dates = []
 
     for predict_dir in deterministic_dirs:
-        dfs, max_lt, date_strs = load_forecast(predict_dir, start_date)
+        dfs, max_lt, date_strs = load_forecast(predict_dir, start_date, end_date)
         bcorr = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bcorr)
         bmse = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bmse).T
         bmse_per_init_date = compute_metric_across_dfs(dfs, max_lt, ground_truth, compute_bmse).T
@@ -134,7 +136,7 @@ def main():
     ensemble_member_labels = []
     for label_idx, predict_dir in enumerate(ensemble_dirs):
         for member in ensemble_members:
-            dfs, max_lt, date_strs = load_forecast(predict_dir, start_date, member)
+            dfs, max_lt, date_strs = load_forecast(predict_dir, start_date, end_date, member)
             bcorr = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bcorr)
             bmse = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bmse).T
             bmse_per_init_date = compute_metric_across_dfs(dfs, max_lt, ground_truth, compute_bmse).T

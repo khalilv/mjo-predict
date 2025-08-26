@@ -192,8 +192,9 @@ def run_inference(forecast_dir, save_dir, ground_truth_path, model, start_date, 
 
 forecast_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi'
 ground_truth_path = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt"
+root_save_dir = "/glade/derecho/scratch/kvirji/mjo-predict/exps/2021/baselines"
 train_start = '1979-01-01'
-train_end = '2019-01-01'
+train_end = '2021-01-01'
 test_end = '2022-01-01'
 member = 'mean'
 n_groups = 'eight_groups'
@@ -201,35 +202,35 @@ n_groups = 'eight_groups'
 # Grouped mean bias correction
 train_forecast, train_target = load_data(forecast_dir, ground_truth_path, train_start, train_end, member, use_grouping=True)
 mean_bias_model = fit_mean_bias_model(train_forecast, train_target)
-save_dir = f'/glade/derecho/scratch/kvirji/mjo-predict/exps/baselines/2019-2021/{n_groups}/mean_bias/'
+save_dir = f'{root_save_dir}/{n_groups}/mean_bias/'
 run_inference(forecast_dir, save_dir, ground_truth_path, mean_bias_model, train_end, test_end, member, method='mean_bias', use_grouping=True)
 
 # Grouped multilinear regression
 train_forecast, train_target = load_data(forecast_dir, ground_truth_path, train_start, train_end, member, use_grouping=True)
 mlr_model = fit_multilinear_bias_model(train_forecast, train_target)
-save_dir = f'/glade/derecho/scratch/kvirji/mjo-predict/exps/baselines/2019-2021/{n_groups}/MLR/'
+save_dir = f'{root_save_dir}/{n_groups}/MLR/'
 run_inference(forecast_dir, save_dir, ground_truth_path, mlr_model, train_end, test_end, member, method='mlr', use_grouping=True)
 
 # Grouped multilinear regression
 train_forecast, train_target = load_data(forecast_dir, ground_truth_path, train_start, train_end, member, use_grouping=True)
 mlr_model = fit_multilinear_bias_model(train_forecast, train_target)
-save_dir = f'/glade/derecho/scratch/kvirji/mjo-predict/exps/baselines/2019-2021/{n_groups}/MLR_with_phase_rescale/'
+save_dir = f'{save_dir}/{n_groups}/MLR_with_phase_rescale/'
 run_inference(forecast_dir, save_dir, ground_truth_path, mlr_model, train_end, test_end, member, method='mlr_rescale', use_grouping=True)
 
 # Phase-only mean bias model
 train_forecast, train_target = load_data(forecast_dir, ground_truth_path, train_start, train_end, member, use_grouping=True)
 mean_phase_model = fit_mean_phase_bias_model(train_forecast, train_target)
-save_dir = f'/glade/derecho/scratch/kvirji/mjo-predict/exps/baselines/2019-2021/{n_groups}/mean_phase_bias/'
+save_dir = f'{save_dir}/{n_groups}/mean_phase_bias/'
 run_inference(forecast_dir, save_dir, ground_truth_path, mean_phase_model, train_end, test_end, member, method='mean_phase_bias', use_grouping=True)
 
 #Procrustes transform
 train_forecast, train_target = load_data(forecast_dir, ground_truth_path, train_start, train_end, member, use_grouping=True)
 procrustes_model = fit_procrustes_model(train_forecast, train_target, phase_only=False)
-save_dir = f'/glade/derecho/scratch/kvirji/mjo-predict/exps/baselines/2019-2021/{n_groups}/procrustes/'
+save_dir = f'{save_dir}/{n_groups}/procrustes/'
 run_inference(forecast_dir, save_dir, ground_truth_path, procrustes_model, train_end, test_end, member, method='procrustes', use_grouping=True)
 
 #Phase-only procrustes transform 
 train_forecast, train_target = load_data(forecast_dir, ground_truth_path, train_start, train_end, member, use_grouping=True)
 procrustes_phase_model = fit_procrustes_model(train_forecast, train_target, phase_only=True)
-save_dir = f'/glade/derecho/scratch/kvirji/mjo-predict/exps/baselines/2019-2021/{n_groups}/procrustes_phase/'
+save_dir = f'{save_dir}/{n_groups}/procrustes_phase/'
 run_inference(forecast_dir, save_dir, ground_truth_path, procrustes_phase_model, train_end, test_end, member, method='procrustes', use_grouping=True)
