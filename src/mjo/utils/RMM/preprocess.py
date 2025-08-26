@@ -4,12 +4,12 @@ import numpy as np
 from mjo.utils.RMM.io import load_rmm_indices
 from mjo.utils.plot import correlation_scatter_plot
 
-def subset_rmm_data(df, start_year, end_year, compute_statistics):
+def subset_rmm_data(df, start_date, end_date, compute_statistics):
     
     # ensure datetime index
     assert isinstance(df.index, pd.DatetimeIndex), "DataFrame must have datetime index"
 
-    subset_df = df[(df.index.year >= start_year) & (df.index.year < end_year)]
+    subset_df = df[(df.index >= start_date) & (df.index < end_date)]
     phase = np.arctan2(subset_df['RMM2'],subset_df['RMM1'])
     subset_df['phase_sin'] = np.sin(phase)
     subset_df['phase_cos'] = np.cos(phase)
@@ -31,10 +31,10 @@ def subset_rmm_data(df, start_year, end_year, compute_statistics):
     
 def main():
         
-    train_start_year = 1979
-    val_start_year = 2018
-    test_start_year = 2021
-    test_end_year = 2022
+    train_start_date = '1979-01-01'
+    val_start_date = '2020-01-01'
+    test_start_date = '2021-01-01'
+    test_end_date = '2022-02-13'
     input_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt"
     output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed/2021"
     abm_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/ABM/rmm.74toRealtime.txt"
@@ -43,9 +43,9 @@ def main():
 
     input_df = load_rmm_indices(input_filepath, train_start_year, test_end_year)
 
-    train_df, mean, std = subset_rmm_data(input_df, train_start_year, val_start_year, True)
-    val_df = subset_rmm_data(input_df, val_start_year, test_start_year, False)
-    test_df = subset_rmm_data(input_df, test_start_year, test_end_year, False)
+    train_df, mean, std = subset_rmm_data(input_df, train_start_date, val_start_date, True)
+    val_df = subset_rmm_data(input_df, val_start_date, test_start_date, False)
+    test_df = subset_rmm_data(input_df, test_start_date, test_end_date, False)
 
     np.savez(os.path.join(output_dir, 'statistics.npz'),
             RMM1_mean=0.0, #mean['RMM1'],
