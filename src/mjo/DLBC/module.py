@@ -178,7 +178,7 @@ class MJOForecastModule(LightningModule):
     def test_step(self, batch: Any, batch_idx: int):
         in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        target = residual if residual is not None else out_data
+        target = out_data
 
         x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
         pred_data = self.net.forward(x=x_in)
