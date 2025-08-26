@@ -73,12 +73,12 @@ trainer:
 model:
   pretrained_path: ""
   hidden_size: 10
-  lr: 2.53e-5
+  lr: 1e-4
   beta_1: 0.9
   beta_2: 0.99
   weight_decay: 1e-5
   warmup_steps: 500
-  max_steps: 7500
+  max_steps: 15000
   save_outputs: true
 
 # ---------------------------- DATA -------------------------------------------
