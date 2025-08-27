@@ -1,5 +1,6 @@
 import math
 import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt
 import matplotlib.ticker as ticker
 
@@ -303,3 +304,316 @@ def bivariate_correlation_by_month_plot(bcorr_dict, label, title, output_filenam
         plt.close()
     else:
         plt.show()
+    
+def bivariate_mse_vs_phase_plot(bmse_dict, labels, output_filename, show_error = False, stacked = False, figsize = (24, 6), sharey = True):
+    """
+    Plot 3 subplots (Weeks 1-2, 3-4, 5-6) showing BMSE vs phase for multiple data sources.
+
+    Parameters
+    ----------
+    bmse_dict : list of dict
+        Each element corresponds to one data source (match to `labels`).
+        Each dict maps `phase` -> array of shape (42, 2), where the last dim is
+        [BMSEA, BMSEP]. We compute BMSE = BMSEA + BMSEP.
+        Phase keys can be int or str (e.g., 1..8 or "1".."8").
+    labels : list of str
+        Names of the data sources. Must match len(bmse_dict).
+    output_filename : str
+        Path to save the resulting figure (e.g., "bmse_vs_phase.png").
+    show_error : bool, default True
+        Show y-error bars (std across leads within the week bin) for BMSE totals.
+        (Ignored for stacked components—error bars represent totals only.)
+    stacked : bool, default False
+        If True, bars are stacked to show BMSEA and BMSEP composition.
+        If False, bars show only the total BMSE.
+    figsize : (int, int), default (12, 4)
+        Figure size.
+    dpi : int, default 150
+        Dots per inch for saved figure.
+    sharey : bool, default True
+        Share y-axis across subplots for easier comparison.
+
+    Returns
+    -------
+    df_agg : pd.DataFrame
+        Tidy aggregated data with columns:
+        ['label', 'phase', 'bin_index', 'bin_name',
+         'bmse_mean', 'bmse_std', 'bmsea_mean', 'bmsep_mean'].
+    fig : matplotlib.figure.Figure
+        The Matplotlib figure object.
+
+    Notes
+    -----
+    - Lead indexing (42 leads) is split into 3 bins:
+        Weeks 1-2: leads 1-14  -> indices [0:14]
+        Weeks 3-4: leads 15-28 -> indices [14:28]
+        Weeks 5-6: leads 29-42 -> indices [28:42]
+    - Assumes the trailing axis order is [BMSEA, BMSEP].
+      BMSE is computed as BMSEA + BMSEP, so order does not affect the total.
+    """
+    if len(bmse_dict) != len(labels):
+        raise ValueError("len(bmse_dict) must match len(labels).")
+
+    # Define week bins as slices over the 42-lead axis
+    bins = [
+        (slice(0, 14), "Weeks 1-2 (Leads 1-14)"),
+        (slice(14, 28), "Weeks 3-4 (Leads 15-28)"),
+        (slice(28, 42), "Weeks 5-6 (Leads 29-42)"),
+    ]
+
+    # Determine phases across all sources (union), coerce to ints, then sort 1..8
+    phases_all = set()
+    for src in bmse_dict:
+        for ph in src.keys():
+            try:
+                phases_all.add(int(ph))
+            except Exception:
+                # If not coercible, keep as-is; but plotting expects ints 1..8
+                raise ValueError(f"Phase key '{ph}' is not an int or int-like string.")
+    phases = sorted(phases_all)  # expected [1..8], but will honor whatever is present
+    n_phases = len(phases)
+    n_sources = len(labels)
+
+    # Aggregate into a tidy DataFrame
+    rows = []
+    for label, src in zip(labels, bmse_dict):
+        for ph in phases:
+            if ph not in src and str(ph) not in src:
+                # Missing phase for this source; fill NaNs
+                arr = np.full((42, 2), np.nan, dtype=float)
+            else:
+                arr = src.get(ph, src.get(str(ph)))
+                if not isinstance(arr, np.ndarray) or arr.shape != (42, 2):
+                    raise ValueError(
+                        f"For label '{label}', phase '{ph}', expected array shape (42,2); got {getattr(arr, 'shape', None)}"
+                    )
+
+            bmsea = arr[:, 0]
+            bmsep = arr[:, 1]
+            bmse = bmsea + bmsep
+
+            for b_idx, (slc, b_name) in enumerate(bins):
+                chunk = bmse[slc]
+                chunk_a = bmsea[slc]
+                chunk_p = bmsep[slc]
+
+                rows.append({
+                    "label": label,
+                    "phase": ph,
+                    "bin_index": b_idx,
+                    "bin_name": b_name,
+                    "bmse_mean": np.nanmean(chunk),
+                    "bmse_std": np.nanstd(chunk, ddof=1) if np.sum(~np.isnan(chunk)) > 1 else np.nan,
+                    "bmsea_mean": np.nanmean(chunk_a),
+                    "bmsep_mean": np.nanmean(chunk_p),
+                })
+
+    df_agg = pd.DataFrame(rows)
+
+    # Start plotting
+    fig, axes = plt.subplots(1, 3, figsize=figsize, dpi=300, sharey=sharey)
+    if not isinstance(axes, np.ndarray):
+        axes = np.array([axes])  # safety for edge cases
+
+    # Bar layout
+    x = np.arange(n_phases)  # positions for phases
+    total_group_width = 0.8
+    bar_width = total_group_width / max(1, n_sources)
+    # Leftmost offset so groups are centered on each phase tick
+    offsets = (np.arange(n_sources) - (n_sources - 1) / 2.0) * bar_width
+
+    # Shared y-limits across subplots (based on totals)
+    if sharey:
+        ymax = 0.0
+        for b_idx in range(3):
+            df_bin = df_agg[df_agg["bin_index"] == b_idx]
+            ymax = max(ymax, np.nanmax(df_bin["bmse_mean"].values))
+        if np.isfinite(ymax):
+            y_max_lim = (np.ceil(ymax * 20) / 20) if ymax > 0 else 1.0  # round up a bit
+        else:
+            y_max_lim = None
+    else:
+        y_max_lim = None
+
+    # Draw subplots
+    for b_idx, ax in enumerate(axes):
+        df_bin = df_agg[df_agg["bin_index"] == b_idx]
+
+        for s_idx, label in enumerate(labels):
+            df_ls = df_bin[df_bin["label"] == label].set_index("phase").reindex(phases)
+
+            heights_total = df_ls["bmse_mean"].values
+            yerr = df_ls["bmse_std"].values if show_error and not stacked else None
+
+            xpos = x + offsets[s_idx]
+
+            if stacked:
+                # Draw BMSEA and stack BMSEP on top
+                a_part = df_ls["bmsea_mean"].values
+                p_part = df_ls["bmsep_mean"].values
+
+                ax.bar(xpos, a_part, width=bar_width, label=(label if b_idx == 0 else None))
+                ax.bar(xpos, p_part, width=bar_width, bottom=a_part)
+                # Error bars on totals if requested (visually okay on stacks)
+                if show_error and yerr is not None:
+                    ax.errorbar(xpos, a_part + p_part, yerr=yerr, fmt='none', capsize=3, linewidth=1)
+            else:
+                ax.bar(xpos, heights_total, width=bar_width, label=(label if b_idx == 0 else None), yerr=yerr, capsize=3)
+
+        # Axis cosmetics
+        ax.set_title(df_ls["bin_name"].iloc[0] if not df_ls.empty else ["Weeks 1-2","Weeks 3-4","Weeks 5-6"][b_idx])
+        ax.set_xticks(x)
+        ax.set_xticklabels([str(p) for p in phases])
+        ax.set_xlabel("Phase")
+        ax.grid(axis="y", alpha=0.3)
+        if y_max_lim is not None:
+            ax.set_ylim(0, y_max_lim)
+
+        if b_idx == 0:
+            ax.set_ylabel("BMSE")
+
+    # Single legend (labels only need to appear once; we added them on b_idx==0)
+    handles, leg_labels = axes[0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, leg_labels, loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False)
+
+    fig.tight_layout(rect=(0, 0, 0.92, 1))  # leave space on right for legend
+    if output_filename:
+        fig.savefig(output_filename, dpi=300, bbox_inches="tight")
+    else:
+        plt.show()
+
+def bivariate_correlation_vs_phase_plot(bcorr_dict, labels, output_filename, show_error = False, figsize = (24, 6), sharey =True):
+    """
+    Plot 3 subplots (Weeks 1-2, 3-4, 5-6) showing BCorr vs phase for multiple data sources.
+
+    Parameters
+    ----------
+    bcorr_dict : list of dict
+        Each element corresponds to one data source (match to `labels`).
+        Each dict maps `phase` -> array of shape (42,), correlation per lead.
+    labels : list of str
+        Names of the data sources. Must match len(bcorr_dict).
+    output_filename : str
+        Path to save the resulting figure (e.g., "bcorr_vs_phase.png").
+    show_error : bool, default True
+        Show y-error bars (std across leads within the week bin).
+    figsize : (int, int), default (12, 4)
+        Figure size.
+    dpi : int, default 150
+        Dots per inch for saved figure.
+    sharey : bool, default True
+        Share y-axis across subplots for easier comparison.
+
+    Returns
+    -------
+    df_agg : pd.DataFrame
+        Tidy aggregated data with columns:
+        ['label', 'phase', 'bin_index', 'bin_name', 'bcorr_mean', 'bcorr_std'].
+    fig : matplotlib.figure.Figure
+        The Matplotlib figure object.
+    """
+    if len(bcorr_dict) != len(labels):
+        raise ValueError("len(bcorr_dict) must match len(labels).")
+
+    # Week bins over the 42 leads (1-indexed leads → these 0-indexed slices)
+    bins = [
+        (slice(0, 14), "Weeks 1-2 (Leads 1-14)"),
+        (slice(14, 28), "Weeks 3-4 (Leads 15-28)"),
+        (slice(28, 42), "Weeks 5-6 (Leads 29-42)"),
+    ]
+
+    # Union of phases across all sources; force int and sort
+    phases_all = set()
+    for src in bcorr_dict:
+        for ph in src.keys():
+            try:
+                phases_all.add(int(ph))
+            except Exception:
+                raise ValueError(f"Phase key '{ph}' is not an int or int-like string.")
+    phases = sorted(phases_all)
+    n_phases = len(phases)
+    n_sources = len(labels)
+
+    # Aggregate into tidy frame
+    rows = []
+    for label, src in zip(labels, bcorr_dict):
+        for ph in phases:
+            arr = src.get(ph, src.get(str(ph)))
+            if not isinstance(arr, np.ndarray) or arr.shape != (42,):
+                # Missing phase or wrong shape → fill NaNs so it plots as empty
+                arr = np.full((42,), np.nan, dtype=float)
+
+            for b_idx, (slc, b_name) in enumerate(bins):
+                chunk = arr[slc]
+                rows.append({
+                    "label": label,
+                    "phase": ph,
+                    "bin_index": b_idx,
+                    "bin_name": b_name,
+                    "bcorr_mean": np.nanmean(chunk),
+                    "bcorr_std": np.nanstd(chunk, ddof=1) if np.sum(~np.isnan(chunk)) > 1 else np.nan,
+                })
+
+    df_agg = pd.DataFrame(rows)
+
+    # Create figure
+    fig, axes = plt.subplots(1, 3, figsize=figsize, dpi=300, sharey=sharey)
+    if not isinstance(axes, np.ndarray):
+        axes = np.array([axes])
+
+    # Bar layout
+    x = np.arange(n_phases)
+    total_group_width = 0.8
+    bar_width = total_group_width / max(1, n_sources)
+    offsets = (np.arange(n_sources) - (n_sources - 1) / 2.0) * bar_width
+
+    # Shared y-limits across subplots
+    if sharey and not df_agg.empty:
+        ymin = np.nanmin(df_agg["bcorr_mean"].values)
+        ymax = np.nanmax(df_agg["bcorr_mean"].values)
+        if np.isfinite(ymin) and np.isfinite(ymax):
+            pad = 0.04 * max(1e-6, (ymax - ymin))
+            y_limits = (ymin - pad, ymax + pad)
+        else:
+            y_limits = None
+    else:
+        y_limits = None
+
+    # Draw
+    for b_idx, ax in enumerate(axes):
+        df_bin = df_agg[df_agg["bin_index"] == b_idx]
+
+        for s_idx, label in enumerate(labels):
+            df_ls = df_bin[df_bin["label"] == label].set_index("phase").reindex(phases)
+
+            heights = df_ls["bcorr_mean"].values
+            yerr = df_ls["bcorr_std"].values if show_error else None
+            xpos = x + offsets[s_idx]
+
+            ax.bar(xpos, heights, width=bar_width, label=(label if b_idx == 0 else None),
+                   yerr=yerr, capsize=3)
+
+        title = df_bin["bin_name"].iloc[0] if not df_bin.empty else ["Weeks 1-2","Weeks 3-4","Weeks 5-6"][b_idx]
+        ax.set_title(title)
+        ax.set_xticks(x)
+        ax.set_xticklabels([str(p) for p in phases])
+        ax.set_xlabel("Phase")
+        ax.grid(axis="y", alpha=0.3)
+        if y_limits is not None:
+            ax.set_ylim(*y_limits)
+        if b_idx == 0:
+            ax.set_ylabel("BCorr")
+
+    # Single legend on the right
+    handles, leg_labels = axes[0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, leg_labels, loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False)
+
+    fig.tight_layout(rect=(0, 0, 0.92, 1))
+    if output_filename:
+        fig.savefig(output_filename, dpi=300, bbox_inches="tight")
+    else:
+        plt.show()
+
+    

@@ -166,7 +166,7 @@ class MJOForecastDataModule(LightningDataModule):
                     in_transforms=self.in_transforms,
                     date_transforms=self.date_transforms,
                     out_transforms=self.out_transforms,
-                    filter_mjo_events=False,
+                    filter_mjo_events=self.filter_mjo_events,
                     filter_mjo_phases=self.filter_mjo_phases,
                 ),
                 max_buffer_size=self.max_buffer_size,
@@ -208,7 +208,7 @@ class MJOForecastDataModule(LightningDataModule):
                 in_transforms=self.in_transforms,
                 date_transforms=self.date_transforms,
                 out_transforms=self.out_transforms,
-                filter_mjo_events=self.filter_mjo_events,
+                filter_mjo_events=False,
                 filter_mjo_phases=self.filter_mjo_phases,
             )
 
