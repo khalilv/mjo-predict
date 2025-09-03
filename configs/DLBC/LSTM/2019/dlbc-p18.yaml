@@ -2,7 +2,7 @@ seed_everything: 42
 
 # ---------------------------- TRAINER -------------------------------------------
 trainer:
-  default_root_dir: /glade/derecho/scratch/kvirji/mjo-predict/exps/2019/DLBC/p18
+  default_root_dir: /glade/derecho/scratch/kvirji/mjo-predict/exps/2019/DLBC-ABM/p18
   precision: 32
 
   devices: 1
@@ -72,7 +72,7 @@ trainer:
 # ---------------------------- MODEL -------------------------------------------
 model:
   pretrained_path: ""
-  hidden_size: 16
+  hidden_size: 10
   lr: 1e-4
   beta_1: 0.9
   beta_2: 0.99
@@ -83,7 +83,7 @@ model:
 
 # ---------------------------- DATA -------------------------------------------
 data:
-  root_dir: /glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed/2019
+  root_dir: /glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed/ABM/2019
   forecast_dir: /glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed/FuXi
   load_forecast_members: false
   in_variables:
