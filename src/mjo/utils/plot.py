@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import matplotlib.ticker as ticker
+from matplotlib.lines import Line2D
+from typing import Sequence, Tuple, List, Union
 
 def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplitude, gt_amplitude, pred_label = None, gt_label = None, output_filename = None):
     pred_label = pred_label if pred_label else 'Predictions'
@@ -616,4 +618,124 @@ def bivariate_correlation_vs_phase_plot(bcorr_dict, labels, output_filename, sho
     else:
         plt.show()
 
-    
+
+def bivariate_correlation_vs_lead_time_heatmap(
+    lead_times: Sequence[Sequence[Union[int, float]]],     # (N, T_i)
+    lookbacks: Sequence[Sequence[Union[int, float]]],      # (N, L_i)
+    correlations: Sequence[np.ndarray],                    # (N, L_i, T_i)
+    labels: Sequence[str],                                 # (N,)
+    output_filename: str = None,
+    *,
+    threshold: float = 0.5,
+    bar_half_width: float = 0.35,  # half the horizontal length of each bar (x-index units)
+) -> Tuple[plt.Figure, List[plt.Axes]]:
+    """
+    N heatmaps (one per model) with x=lookback (categories), y=lead time (categories).
+    Shared Blues colorbar. For each lookback column, draw a short horizontal black bar
+    at the first lead-time *index* where correlation falls below `threshold`
+    (bar placed at the *lower edge* of that day cell). Y ticks are placed on the
+    *upper edge* of cells so the max day label sits exactly at the top border.
+    """
+    N = len(labels)
+    if not (len(lead_times) == len(lookbacks) == len(correlations) == N):
+        raise ValueError("lead_times, lookbacks, correlations, and labels must all have length N.")
+
+    def first_crossing_yindex(vals: np.ndarray, thr: float = 0.5) -> float:
+        v = np.asarray(vals, dtype=float)
+        if v[0] < thr:
+            return 0.0
+        for j in range(len(v) - 1):
+            v0, v1 = v[j], v[j + 1]
+            if (v0 >= thr) and (v1 < thr):
+                if v1 == v0:
+                    return float(j)
+                frac = (thr - v0) / (v1 - v0)
+                return float(j) + float(frac)
+        return float("nan")
+
+    fig, axes = plt.subplots(1, N, figsize=(5.6 * N, 4.3), constrained_layout=True)
+    if N == 1:
+        axes = [axes]
+
+    vmin, vmax = 0.0, 1.0
+    cmap = "Greens"
+    last_im = None
+
+    for i, (ax, lab) in enumerate(zip(axes, labels)):
+        arr = np.asarray(correlations[i], dtype=float)   # (L, T)
+        leads = np.asarray(lead_times[i])
+        looks = np.asarray(lookbacks[i])
+
+        if arr.ndim != 2:
+            raise ValueError(f"correlations[{i}] must be 2D, got {arr.shape}.")
+        L_i, T_i = arr.shape
+        if len(leads) != T_i:
+            raise ValueError(f"lead_times[{i}] length {len(leads)} != correlations[{i}].shape[1] {T_i}.")
+        if len(looks) != L_i:
+            raise ValueError(f"lookbacks[{i}] length {len(looks)} != correlations[{i}].shape[0] {L_i}.")
+
+        # sort lookbacks ascending (x-axis)
+        try:
+            order_looks = np.argsort(looks.astype(float))
+        except Exception:
+            order_looks = np.argsort(looks.astype(str))
+        looks_sorted = looks[order_looks]
+        arr = arr[order_looks, :]
+
+        # ensure lead_times ascending (y-axis)
+        try:
+            order_leads = np.argsort(leads.astype(float))
+        except Exception:
+            order_leads = np.argsort(leads.astype(str))
+        leads_sorted = leads[order_leads]
+        arr = arr[:, order_leads]
+
+        # transpose so x = lookback (columns), y = lead time (rows)
+        A = arr.T  # shape (T, L)
+
+        # heatmap (imshow uses cell centers at integer indices)
+        im = ax.imshow(A, origin="lower", aspect="auto", vmin=vmin, vmax=vmax, cmap=cmap)
+        last_im = im
+
+        # x ticks centered on lookbacks
+        ax.set_xticks(np.arange(L_i))
+        ax.set_xticklabels([str(x) for x in looks_sorted])
+
+        # y ticks on the UPPER edge of selected rows (so top label sits on the top border)
+        step = 3
+        yt_idx = np.arange(0, T_i, step)          # 0,3,6,... in index space
+        ax.set_yticks(yt_idx + 0.5)               # put tick on upper edge
+        ax.set_yticklabels([str(leads_sorted[j]) for j in yt_idx])
+
+        ax.set_xlabel("Lookback Window (days)")
+        if i == 0:
+            ax.set_ylabel("Lead Time (days)")
+        ax.set_title(lab)
+
+        # place bars on the LOWER edge of the day cell (index - 0.5)
+        for c in range(L_i):
+            ycross = first_crossing_yindex(A[:, c], thr=threshold)
+            if np.isnan(ycross):
+                continue
+            y_low_edge = np.floor(ycross) - 0.5
+            # clip to image bounds [-0.5, T_i - 0.5]
+            y_low_edge = max(-0.5, min(T_i - 0.5, y_low_edge))
+            ax.hlines(y_low_edge, c - bar_half_width, c + bar_half_width, colors="k", linewidth=1.3)
+
+        # legend (top-right, boxed) on every subplot
+        bar_proxy = Line2D([0], [0], color="k", lw=1.3, label=f"{threshold} skill crossing")
+        ax.legend(handles=[bar_proxy], loc="upper right", frameon=True, fancybox=True, framealpha=0.95)
+
+        # tighten to exact image edges so ticks at -0.5 and T_i-0.5 align with borders
+        ax.set_xlim(-0.5, L_i - 0.5)
+        ax.set_ylim(-0.5, T_i - 0.5)
+
+    # shared colorbar
+    if last_im is not None:
+        cbar = fig.colorbar(last_im, ax=axes, shrink=0.9, pad=0.02)
+        cbar.set_label("Bivariate Correlation")
+
+    if output_filename:
+        fig.savefig(output_filename, dpi=300, bbox_inches="tight")
+
+    return fig, axes

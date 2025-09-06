@@ -31,17 +31,17 @@ def subset_rmm_data(df, start_date, end_date, compute_statistics):
     
 def main():
         
-    train_start_date = '1979-01-01'
-    val_start_date = '2020-01-01'
-    test_start_date = '2021-01-01'
-    test_end_date = '2022-02-13'
+    train_start_date = '2001-01-01'
+    val_start_date = '2018-01-01'
+    test_start_date = '2019-01-01'
+    test_end_date = '2022-02-12'
     input_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt"
-    output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed/2021"
+    output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed"
     abm_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/ABM/rmm.74toRealtime.txt"
 
     os.makedirs(output_dir, exist_ok=True)
 
-    input_df = load_rmm_indices(input_filepath, train_start_year, test_end_year)
+    input_df = load_rmm_indices(input_filepath)
 
     train_df, mean, std = subset_rmm_data(input_df, train_start_date, val_start_date, True)
     val_df = subset_rmm_data(input_df, val_start_date, test_start_date, False)
@@ -102,7 +102,7 @@ def main():
             dates=test_df.index.values)
 
     # plot correlation with ABM indices
-    abm_df = load_rmm_indices(abm_filepath, train_start_year, test_end_year)
+    abm_df = load_rmm_indices(abm_filepath)
     aligned_df = pd.merge(input_df, abm_df, left_index=True, right_index=True, how='inner', suffixes=('_ours', '_abm')).dropna()
     correlation_scatter_plot(
         pred_rmm1=aligned_df['RMM1_ours'].values,
