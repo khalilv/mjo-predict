@@ -22,7 +22,7 @@ def main():
     os.makedirs(cli.trainer.default_root_dir, exist_ok=True)
 
     cli.model.set_input_length(len(cli.datamodule.get_predictions()))
-    cli.model.set_input_dim(len(cli.datamodule.get_in_variables()))
+    cli.model.set_input_dim(len(cli.datamodule.get_in_variables()) + len(cli.datamodule.get_date_variables()))
     cli.model.set_out_variables(cli.datamodule.get_out_variables())
     if cli.datamodule.normalize_data:
         cli.model.set_denormalization(cli.datamodule.get_transforms('out'))

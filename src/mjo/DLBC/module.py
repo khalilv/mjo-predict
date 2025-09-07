@@ -107,7 +107,7 @@ class MJOForecastModule(LightningModule):
             input_dim=self.input_dim,
             hidden_dim=self.hidden_size,
             num_leads=self.input_length, 
-            output_dim=self.input_dim
+            output_dim=len(self.out_variables)
         )
         if hasattr(self, "pretrained_path") and self.pretrained_path and len(self.pretrained_path) > 0:
             self.load_pretrained_weights(self.pretrained_path)
@@ -122,6 +122,7 @@ class MJOForecastModule(LightningModule):
         target = out_data
 
         x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
+        x_in = torch.cat([x_in, out_date_encodings], dim=2)
         pred_data = self.net.forward(x=x_in) #(B, T, 2)
 
         batch_loss_mse = self.train_mse(preds=pred_data, targets=target)
@@ -146,6 +147,7 @@ class MJOForecastModule(LightningModule):
         target = out_data
 
         x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
+        x_in = torch.cat([x_in, out_date_encodings], dim=2)
         pred_data = self.net.forward(x=x_in)
 
         self.val_mse.update(preds=pred_data, targets=target)
@@ -181,6 +183,7 @@ class MJOForecastModule(LightningModule):
         target = out_data
 
         x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
+        x_in = torch.cat([x_in, out_date_encodings], dim=2)
         pred_data = self.net.forward(x=x_in)
 
         self.test_mse.update(preds=pred_data, targets=target)
@@ -188,7 +191,7 @@ class MJOForecastModule(LightningModule):
               
         if self.save_outputs:
             # if forecast_data is not None:
-            #     pred_data = pred_data + out_data - residual #residual + forecast to recover prediction
+            # pred_data = pred_data + out_data - residual #residual + forecast to recover prediction
             pred_data = self.denormalization.denormalize(pred_data)
             pred_data = pred_data.cpu().numpy()
             for b in range(pred_data.shape[0]):

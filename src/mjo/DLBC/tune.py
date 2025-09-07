@@ -13,8 +13,7 @@ from optuna_integration import PyTorchLightningPruningCallback
 def objective(trial):
     
     # hyperparameters to optimize
-    # hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 10)
-    # depth = trial.suggest_int('num_blocks', 2, 6, step=1)
+    hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 10)
     lr = trial.suggest_float('lr', 1e-7, 1e-3, log=True)
     
     # Initialize Lightning with the model and data modules, and instruct it to parse the config yml
@@ -32,14 +31,13 @@ def objective(trial):
     os.makedirs(root_dir, exist_ok=True)
 
     cli.model.set_input_length(len(cli.datamodule.get_predictions()))
-    cli.model.set_input_dim(len(cli.datamodule.get_in_variables()))
+    cli.model.set_input_dim(len(cli.datamodule.get_in_variables()) + len(cli.datamodule.get_date_variables()))
     cli.model.set_out_variables(cli.datamodule.get_out_variables())
     if cli.datamodule.normalize_data:
         cli.model.set_denormalization(cli.datamodule.get_transforms('out'))
-    cli.model.init_metrics()
-    # cli.model.hidden_size = hidden_size
-    # cli.model.depth = depth
+    cli.model.hidden_size = hidden_size
     cli.model.lr = lr
+    cli.model.init_metrics()
     cli.model.init_network()
 
     # pruning callback
