@@ -97,10 +97,10 @@ plt.ylim(-1, 0.5)
 plt.xlim(1, 42)
 plt.xticks(np.arange(1, 43, 3))
 plt.xlabel("Lead Time (days)")
-plt.ylabel("Amplitude Error")
+plt.ylabel("Amplitude Bias")
 plt.legend(loc="best")
 plt.tight_layout()
-plt.savefig("/glade/derecho/scratch/kvirji/mjo-predict/plots/production/2019-2021/history_only/amplitude_err_vs_lead_time.png", dpi=300)
+plt.savefig("/glade/derecho/scratch/kvirji/mjo-predict/plots/production/2019-2021/history_only/amplitude_bias_vs_lead_time.png", dpi=300)
 plt.close()
 
 

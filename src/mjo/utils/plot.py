@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.lines import Line2D
 from typing import Sequence, Tuple, List, Union
+import matplotlib.colors as mcolors
 
 def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplitude, gt_amplitude, pred_label = None, gt_label = None, output_filename = None):
     pred_label = pred_label if pred_label else 'Predictions'
@@ -657,8 +658,9 @@ def bivariate_correlation_vs_lead_time_heatmap(
     if N == 1:
         axes = [axes]
 
-    vmin, vmax = 0.0, 1.0
-    cmap = "Greens"
+    cmap = "YlGnBu"
+    bounds = np.arange(0.0, 1.0 + 0.1, 0.1)  # 0.0, 0.1, ..., 1.0
+    norm = mcolors.BoundaryNorm(boundaries=bounds, ncolors=plt.get_cmap(cmap).N, clip=True)
     last_im = None
 
     for i, (ax, lab) in enumerate(zip(axes, labels)):
@@ -694,7 +696,7 @@ def bivariate_correlation_vs_lead_time_heatmap(
         A = arr.T  # shape (T, L)
 
         # heatmap (imshow uses cell centers at integer indices)
-        im = ax.imshow(A, origin="lower", aspect="auto", vmin=vmin, vmax=vmax, cmap=cmap)
+        im = ax.imshow(A, origin="lower", aspect="auto", cmap=cmap, norm=norm)
         last_im = im
 
         # x ticks centered on lookbacks
@@ -720,10 +722,12 @@ def bivariate_correlation_vs_lead_time_heatmap(
             y_low_edge = np.floor(ycross) - 0.5
             # clip to image bounds [-0.5, T_i - 0.5]
             y_low_edge = max(-0.5, min(T_i - 0.5, y_low_edge))
+            if ycross > 0:
+                y_low_edge += 1
             ax.hlines(y_low_edge, c - bar_half_width, c + bar_half_width, colors="k", linewidth=1.3)
 
         # legend (top-right, boxed) on every subplot
-        bar_proxy = Line2D([0], [0], color="k", lw=1.3, label=f"{threshold} skill crossing")
+        bar_proxy = Line2D([0], [0], color="k", lw=1.3, label=f"{threshold} skill threshold")
         ax.legend(handles=[bar_proxy], loc="upper right", frameon=True, fancybox=True, framealpha=0.95)
 
         # tighten to exact image edges so ticks at -0.5 and T_i-0.5 align with borders
@@ -732,8 +736,10 @@ def bivariate_correlation_vs_lead_time_heatmap(
 
     # shared colorbar
     if last_im is not None:
-        cbar = fig.colorbar(last_im, ax=axes, shrink=0.9, pad=0.02)
+        cbar = fig.colorbar(last_im, ax=axes, shrink=0.9, pad=0.02, boundaries=bounds, ticks=bounds, spacing="proportional")
         cbar.set_label("Bivariate Correlation")
+        cbar.ax.invert_yaxis()  # show 1 at bottom, 0 at top (colors unchanged)
+
 
     if output_filename:
         fig.savefig(output_filename, dpi=300, bbox_inches="tight")
