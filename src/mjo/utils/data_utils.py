@@ -13,5 +13,9 @@ def prep_input(in_data: torch.Tensor, in_date_encodings: torch.Tensor, out_date_
         x_future = out_date_encodings
     
     x_past =  torch.cat([in_data, in_date_encodings], dim=-1) if in_date_encodings is not None else in_data
-    x_static = None  
+    
+    angle = (np.arctan2(in_data[:, -1, 1], in_data[:, -1, 0]) * 180 / np.pi + 180) % 360
+    phase = np.floor(angle/45) + 1
+    x_static = phase.unsqueeze(1).unsqueeze(1)
+    
     return (x_past, x_future, x_static)

@@ -160,7 +160,7 @@ class MJOForecastModule(LightningModule):
     def training_step(self, batch: Any, batch_idx: int):
         in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        target = residual if residual is not None else out_data
+        target = out_data
 
         x_in = prep_input(
             in_data=in_data,
@@ -191,7 +191,7 @@ class MJOForecastModule(LightningModule):
     def validation_step(self, batch: Any, batch_idx: int):
         in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
-        target = residual if residual is not None else out_data
+        target = out_data
 
         x_in = prep_input(
             in_data=in_data,
@@ -234,7 +234,7 @@ class MJOForecastModule(LightningModule):
     def test_step(self, batch: Any, batch_idx: int):
         in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
        
-        target = residual if residual is not None else out_data
+        target = out_data
 
         x_in = prep_input(
             in_data=in_data,
@@ -252,8 +252,8 @@ class MJOForecastModule(LightningModule):
         self.test_mae.update(preds=pred_data, targets=target)
        
         if self.save_outputs:
-            if forecast_data is not None:
-                pred_data = pred_data + out_data - residual #residual + forecast to recover prediction
+            # if forecast_data is not None:
+            #     pred_data = pred_data + out_data - residual #residual + forecast to recover prediction
             pred_data = self.denormalization.denormalize(pred_data)
             pred_data = pred_data.cpu().numpy()
             for b in range(pred_data.shape[0]):

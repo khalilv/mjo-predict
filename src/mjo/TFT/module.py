@@ -145,8 +145,8 @@ class MJOForecastModule(LightningModule):
                 "reals_input": self.in_variables + self.date_variables + self.forecast_variables,
                 "time_varying_encoder_input": self.in_variables + self.date_variables,
                 "time_varying_decoder_input": self.forecast_variables + self.date_variables,
-                "static_input": [],
-                "static_input_numeric": [],
+                "static_input": ['phase'],
+                "static_input_numeric": ['phase'],
                 "static_input_categorical": [],
                 "categorical_input": []
             }
