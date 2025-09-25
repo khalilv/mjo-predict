@@ -31,7 +31,7 @@ def subset_rmm_data(df, start_date, end_date, compute_statistics):
     
 def main():
         
-    train_start_date = '2001-01-01'
+    train_start_date = '2002-01-01'
     val_start_date = '2018-01-01'
     test_start_date = '2019-01-01'
     test_end_date = '2022-02-12'
