@@ -83,7 +83,7 @@ model:
   dropout: 0.7
   norm_type: "TimeBatchNorm2d"
   normalize_before: true
-  lr: 1.1e-5
+  lr: 1.14e-5
   beta_1: 0.9
   beta_2: 0.99
   weight_decay: 1e-5
