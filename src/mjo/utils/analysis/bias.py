@@ -2,8 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from mjo.utils.RMM.io import load_rmm_indices
 from matplotlib import pyplot as plt
 
