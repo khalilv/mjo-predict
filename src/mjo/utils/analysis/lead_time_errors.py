@@ -2,8 +2,8 @@ import os
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from datetime import datetime
 from mjo.utils.RMM.io import load_rmm_indices
+from mjo.utils.analysis.utils import load_forecast
 from mjo.utils.plot import (
     bivariate_correlation_vs_lead_time_plot,
     bivariate_mse_vs_lead_time_plot,
@@ -26,19 +26,6 @@ def compute_bcorr(predict_rmm1, ground_truth_rmm1, predict_rmm2, ground_truth_rm
     d1 = np.sqrt(np.sum(np.square(predict_rmm1) + np.square(predict_rmm2)))
     d2 = np.sqrt(np.sum(np.square(ground_truth_rmm1) + np.square(ground_truth_rmm2)))
     return n / (d1*d2)
-
-def load_forecast(predict_dir, start_date, end_date, member=None):
-    dataframes = []
-    max_lt = -1
-    start = datetime.strptime(start_date, "%Y-%m-%d")
-    end = datetime.strptime(end_date, "%Y-%m-%d")
-    dates = sorted([d for d in os.listdir(predict_dir) if start <= datetime.strptime(d, "%Y-%m-%d" if member else "%Y-%m-%d.txt") < end])
-    for d in tqdm(dates, f'Loading data from {predict_dir}'):
-        filepath = os.path.join(predict_dir, d, f'{member}.txt') if member else os.path.join(predict_dir, d)
-        df = load_rmm_indices(filepath)
-        max_lt = max(max_lt, len(df))
-        dataframes.append(df)
-    return dataframes, max_lt, dates
 
 def compute_metric_across_leads(dataframes, max_lt, ground_truth_df, metric_fn, fuxi_ds=None, filter_type=None):
     results = []
@@ -68,21 +55,6 @@ def main():
     start_date = '2019-01-01'
     end_date = '2022-01-01'
     deterministic_dirs = [
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/0d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/1d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/10d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/90d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/180d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/360d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/720d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/0d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/1d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/10d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/90d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/180d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/360d_hist/logs/version_1/outputs',
-        # '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/720d_hist/logs/version_1/outputs',
-
         '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/baselines/four_groups/mean_bias',
         '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/baselines/four_groups/MLR_with_doy',
         '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/bias-correction/LSTM/combined',

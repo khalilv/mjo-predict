@@ -2,33 +2,13 @@ import os
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from collections import defaultdict
 from datetime import datetime, timedelta
+from mjo.utils.analysis.utils import load_forecast
 from mjo.utils.RMM.io import load_rmm_indices
 from mjo.utils.plot import (
-    bivariate_correlation_vs_lead_time_plot,
-    bivariate_mse_vs_lead_time_plot,
-    bivariate_mse_vs_init_date_plot, 
-    bivariate_correlation_by_month_plot,
-    bivariate_correlation_vs_lead_time_heatmap,
-    hexbin_skill_vs_amplitude_plot,
-    histogram_skill_vs_phase_plot,
-    bivariate_correlation_by_month_multi_year_plot,
     scatter_amplitudes_by_init_date_tripanel
 )
 
-def load_forecast(predict_dir, start_date, end_date, member=None):
-    dataframes = []
-    max_lt = -1
-    start = datetime.strptime(start_date, "%Y-%m-%d")
-    end = datetime.strptime(end_date, "%Y-%m-%d")
-    dates = sorted([d for d in os.listdir(predict_dir) if start <= datetime.strptime(d, "%Y-%m-%d" if member else "%Y-%m-%d.txt") < end])
-    for d in tqdm(dates, f'Loading data from {predict_dir}'):
-        filepath = os.path.join(predict_dir, d, f'{member}.txt') if member else os.path.join(predict_dir, d)
-        df = load_rmm_indices(filepath)
-        max_lt = max(max_lt, len(df))
-        dataframes.append(df)
-    return dataframes, max_lt, dates
 
 start_date = '2017-01-01'
 end_date = '2017-03-01'
