@@ -8,9 +8,9 @@ from mjo.utils.RMM.io import load_rmm_indices, save_rmm_indices
 
 PHASE_GROUP_MAP = {
     1: 1, 8: 1,
-    2: 1, 3: 1,
-    4: 1, 5: 1,
-    6: 1, 7: 1
+    2: 2, 3: 2,
+    4: 3, 5: 3,
+    6: 4, 7: 4
 }
 
 def get_grouped_phase(phase, use_grouping=False):
@@ -121,7 +121,7 @@ train_start = '2001-01-01'
 train_end = '2019-01-01'
 test_end = '2022-01-01'
 member = 'mean'
-n_groups = 'one_group'
+n_groups = 'four_groups'
 filter_low_amplitude_samples = False
 
 # Grouped mean bias correction
