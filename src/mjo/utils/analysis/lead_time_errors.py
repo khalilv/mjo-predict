@@ -159,10 +159,10 @@ def main():
 
     bivariate_mse_vs_lead_time_plot(
         lead_times=[np.arange(1, max_lead_time + 1) for max_lead_time in max_lead_times],
-        bmsea=low_amp_event_amplitude_errors,
-        bmsep=low_amp_event_phase_errors,
+        bmsea=high_amp_event_amplitude_errors,
+        bmsep=high_amp_event_phase_errors,
         labels=plot_labels,
-        output_filename=os.path.join(output_dir, 'bmse_forecast_low_amp_events.png'),
+        output_filename=os.path.join(output_dir, 'bmse_forecast_high_amp_events.png'),
         combined=True
     )
 
