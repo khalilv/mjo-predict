@@ -73,17 +73,17 @@ trainer:
 model:
   pretrained_path: ""
   past_cov_dim: 2
-  future_cov_dim: 0
+  future_cov_dim: 4
   static_cov_dim: 1
   nr_params: 1
   hidden_size: 64
   ff_size: 64
   num_blocks: 4
   activation: "ReLU"
-  dropout: 0.15
+  dropout: 0.8
   norm_type: "TimeBatchNorm2d"
   normalize_before: true
-  lr: 5e-5
+  lr: 3.1e-5
   beta_1: 0.9
   beta_2: 0.99
   weight_decay: 1e-5

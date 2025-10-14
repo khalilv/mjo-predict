@@ -77,16 +77,16 @@ trainer:
 model:
   pretrained_path: ""
   num_static_components: 0
-  hidden_size: 64
+  hidden_size: 32
   lstm_layers: 2
   num_attention_heads: 4
   full_attention: false
   feed_forward: "GatedResidualNetwork"
-  hidden_continuous_size: 64
+  hidden_continuous_size: 32
   add_relative_index: false
-  dropout: 0.2
+  dropout: 0.5
   norm_type: "LayerNorm"
-  lr: 1e-5
+  lr: 7.3e-5
   beta_1: 0.9
   beta_2: 0.99
   weight_decay: 1e-5
