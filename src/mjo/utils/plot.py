@@ -4,8 +4,12 @@ import pandas as pd
 from matplotlib import pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.lines import Line2D
-from typing import Sequence, Tuple, List, Union
+from matplotlib import cm
+from typing import Sequence, Tuple, List, Union, Optional, Literal
 import matplotlib.colors as mcolors
+from matplotlib.colors import BoundaryNorm, ListedColormap
+import matplotlib.dates as mdates
+import matplotlib.patches as mpatches
 
 def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplitude, gt_amplitude, pred_label = None, gt_label = None, output_filename = None):
     pred_label = pred_label if pred_label else 'Predictions'
@@ -44,13 +48,13 @@ def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplit
     else:
         plt.show()
 
-def phase_space_plot(pred_rmm1s, gt_rmm1, pred_rmm2s, gt_rmm2, labels, gt_label, abm_rmm1=None, abm_rmm2=None, title=None, output_filename=None):
+def phase_space_plot(pred_rmm1s, gt_rmm1, pred_rmm2s, gt_rmm2, labels, gt_label, abm_rmm1=None, abm_rmm2=None, title=None, output_filename=None, ecmwf_rmm1=None, ecmwf_rmm2=None, ecmwf_timestamps=None):
 
     def _add_region_labels():
-        plt.text(0, -3.75, "Indian Ocean", ha='center', va='center', fontsize=9)
-        plt.text(3.75, 0, "Maritime Continent", ha='center', va='center', fontsize=9, rotation=-90)
-        plt.text(0, 3.75, "Western Pacific", ha='center', va='center', fontsize=9)
-        plt.text(-3.75, 0, "Western Hem.& Africa", ha='center', va='center', fontsize=9, rotation=90)
+        plt.text(0, -3.5, "Indian Ocean", ha='center', va='center', fontsize=11)
+        plt.text(3.5, 0, "Maritime Continent", ha='center', va='center', fontsize=11, rotation=-90)
+        plt.text(0, 3.5, "Western Pacific", ha='center', va='center', fontsize=11)
+        plt.text(-3.5, 0, "Western Hem.& Africa", ha='center', va='center', fontsize=11, rotation=90)
 
 
     def _draw_phase_wedges():
@@ -67,27 +71,40 @@ def phase_space_plot(pred_rmm1s, gt_rmm1, pred_rmm2s, gt_rmm2, labels, gt_label,
             angle = (4.5 + i) * np.pi / 4
             x = 4 * np.cos(angle)
             y = 4 * np.sin(angle)
-            plt.text(x, y, label, ha='center', va='center', fontsize=9, color='gray')
+            plt.text(x, y, label, ha='center', va='center', fontsize=11, color='gray')
 
     assert len(labels) == len(pred_rmm1s), 'Number of labels must match number of prediction sources'
     plt.figure(figsize=(8, 8))
+
+    ax = plt.gca()
+    # Draw a unit circle in light gray
+    unit_circle = mpatches.Circle((0, 0), 1, edgecolor='lightgray', facecolor='none', linewidth=0.8, linestyle='-', zorder=0)
+    ax.add_patch(unit_circle)
+
     colors = plt.cm.tab10(np.linspace(0, 1, len(labels)))
+    # colors =  [plt.cm.viridis(np.linspace(0, 1, 4))[2], colors[0]]
     for i, label in enumerate(labels):
         plt.plot(pred_rmm1s[i], pred_rmm2s[i], color=colors[i], alpha=0.8, label=label)
         plt.plot(pred_rmm1s[i][0], pred_rmm2s[i][0], color=colors[i], marker='o')  # start
         for lt in range(5, len(pred_rmm1s[i]), 5):
             plt.plot(pred_rmm1s[i][lt], pred_rmm2s[i][lt], color=colors[i], marker='.')
-
+   
+    if abm_rmm1 is not None and abm_rmm2 is not None:
+        plt.plot(abm_rmm1, abm_rmm2, color='lightgray', linestyle='--', alpha=0.75, label='ABM')
+        plt.plot(abm_rmm1[0], abm_rmm2[0], color='lightgray', marker='o')  # start
+        for lt in range(5, len(abm_rmm1), 5):
+                plt.plot(abm_rmm1[lt], abm_rmm2[lt], color='lightgray', marker='.')
+    
+    if ecmwf_rmm1 is not None and ecmwf_rmm2 is not None:
+        plt.plot(ecmwf_rmm1, ecmwf_rmm2, color='red', alpha=0.8, label='ECMWF')
+        # plt.plot(ecmwf_rmm1[2], ecmwf_rmm2[2], color='red', marker='o')  # start
+        for lt in range(4, len(ecmwf_rmm1), 5):
+                plt.plot(ecmwf_rmm1[lt], ecmwf_rmm2[lt], color='red', marker='.')
+    
     plt.plot(gt_rmm1, gt_rmm2, color='black', linestyle='--', alpha=0.75, label=gt_label)
     plt.plot(gt_rmm1[0], gt_rmm2[0], color='black', marker='o')  # start
     for lt in range(5, len(gt_rmm1), 5):
             plt.plot(gt_rmm1[lt], gt_rmm2[lt], color='black', marker='.')
-    
-    if abm_rmm1 is not None and abm_rmm2 is not None:
-        plt.plot(abm_rmm1, abm_rmm2, color='lightgray', linestyle='--', alpha=0.75, label='ABM')
-        plt.plot(abm_rmm1[0], abm_rmm2[0], color='lightgray', marker='o')  # start
-        for lt in range(5, len(gt_rmm1), 5):
-                plt.plot(abm_rmm1[lt], abm_rmm2[lt], color='lightgray', marker='.')
 
     plt.axhline(0, color='gray', linewidth=0.5)
     plt.axvline(0, color='gray', linewidth=0.5)
@@ -115,14 +132,13 @@ def phase_space_plot(pred_rmm1s, gt_rmm1, pred_rmm2s, gt_rmm2, labels, gt_label,
 def phase_space_composite_plot(pred_composites, gt_composites, labels, gt_label, abm_composites=None, title=None, output_filename=None):
 
     def _add_region_labels():
-        plt.text(0, -1.75, "Indian Ocean", ha='center', va='center', fontsize=9)
-        plt.text(1.75, 0, "Maritime Continent", ha='center', va='center', fontsize=9, rotation=-90)
-        plt.text(0, 1.75, "Western Pacific", ha='center', va='center', fontsize=9)
-        plt.text(-1.75, 0, "Western Hem.& Africa", ha='center', va='center', fontsize=9, rotation=90)
-
+        plt.text(0, -1.5, "Indian Ocean", ha='center', va='center', fontsize=11)
+        plt.text(1.5, 0, "Maritime Continent", ha='center', va='center', fontsize=11, rotation=-90)
+        plt.text(0, 1.5, "Western Pacific", ha='center', va='center', fontsize=11)
+        plt.text(-1.5, 0, "Western Hem.& Africa", ha='center', va='center', fontsize=11, rotation=90)
 
     def _draw_phase_wedges():
-        r = math.sqrt(8)
+        r = math.sqrt(6.125)
         labels = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8']
 
         for i in range(8):
@@ -133,12 +149,18 @@ def phase_space_composite_plot(pred_composites, gt_composites, labels, gt_label,
 
         for i, label in enumerate(labels):
             angle = (4.5 + i) * np.pi / 4
-            x = 2 * np.cos(angle)
-            y = 2 * np.sin(angle)
-            plt.text(x, y, label, ha='center', va='center', fontsize=9, color='gray')
+            x = 1.75 * np.cos(angle)
+            y = 1.75 * np.sin(angle)
+            plt.text(x, y, label, ha='center', va='center', fontsize=11, color='gray')
 
     assert len(labels) == len(pred_composites), 'Number of labels must match number of prediction sources'
     plt.figure(figsize=(8, 8))
+    
+    ax = plt.gca()
+    # Draw a unit circle in light gray
+    unit_circle = mpatches.Circle((0, 0), 1, edgecolor='lightgray', facecolor='none', linewidth=0.8, linestyle='-', zorder=0)
+    ax.add_patch(unit_circle)
+
     colors = plt.cm.tab10(np.linspace(0, 1, len(labels)))
     for i, label in enumerate(labels):
         for _, (rmm1, rmm2) in pred_composites[i].items():
@@ -167,9 +189,9 @@ def phase_space_composite_plot(pred_composites, gt_composites, labels, gt_label,
 
     plt.xlabel("RMM1")
     plt.ylabel("RMM2")
-    plt.title(title if title else f"Phase space composite diagram")
-    plt.xlim(-2, 2)
-    plt.ylim(-2, 2)
+    # plt.title(title if title else f"Phase space composite diagram")
+    plt.xlim(-1.75, 1.75)
+    plt.ylim(-1.75, 1.75)
     plt.gca().set_aspect('equal')
 
     # prevent duplicate legend entries
@@ -190,10 +212,10 @@ def bivariate_correlation_vs_lead_time_plot(lead_times, correlations, labels, ou
     plt.figure(figsize=(8, 5))
     for i, label in enumerate(labels):
         plt.plot(lead_times[i], correlations[i], color=colors[i], label=label)
-    plt.axhline(0.5, color='gray', linestyle='--', linewidth=1) 
-    plt.xlabel('Lead Time (days)')
-    plt.ylabel('Bivariate Correlation')
-    plt.title('Bivariate Correlation vs Lead Time')
+    plt.axhline(0.5, color='black', linestyle='--', linewidth=1) 
+    plt.xlabel('Lead time (days)')
+    plt.ylabel('Bivariate correlation')
+    # plt.title('Bivariate Correlation vs Lead Time')
     plt.legend()
     ax = plt.gca()
     ax.xaxis.set_major_locator(ticker.MultipleLocator(1))   # grid every day
@@ -219,9 +241,9 @@ def bivariate_mse_vs_lead_time_plot(lead_times, bmsea, bmsep, labels, output_fil
         else:
             plt.plot(lead_times[i], bmsea[i], color=colors[i], linestyle='-', label=f'{label} (Amplitude)')
             plt.plot(lead_times[i], bmsep[i], color=colors[i], linestyle='--', label=f'{label} (Phase)')
-    plt.xlabel('Lead Time (days)')
-    plt.ylabel('Bivariate Mean Squared Error')
-    plt.title('Bivariate Mean Squared Error vs Lead Time')
+    plt.xlabel('Lead time (days)')
+    plt.ylabel('Bivariate mean squared error')
+    # plt.title('Bivariate Mean Squared Error vs Lead Time')
     plt.legend()
     plt.tight_layout()
     ax = plt.gca()
@@ -272,7 +294,7 @@ def lag_correlation_plot(corrs: np.ndarray, timesteps: np.ndarray, variables: li
     else:
         plt.show()
 
-def bivariate_correlation_by_month_plot(bcorr_dict, label, title, output_filename=None, levels=np.linspace(0.1, 1.0, 10), threshold=0.5, cmap="RdBu_r"):
+def bivariate_correlation_by_month_plot(bcorr_dict, label, title, output_filename=None, levels=np.linspace(0.1, 1.0, 10), threshold=0.5, cmap="YlGnBu"):
     months = sorted(bcorr_dict.keys())
     lead_times = len(next(iter(bcorr_dict.values())))  # assume all months have same lead time length
 
@@ -294,7 +316,7 @@ def bivariate_correlation_by_month_plot(bcorr_dict, label, title, output_filenam
                         'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
 
     ax.set_ylabel("Lead time (days)")
-    ax.set_title(title)
+    # ax.set_title(title)
 
     # Colorbar
     cbar = plt.colorbar(c, orientation='horizontal', pad=0.1)
@@ -307,318 +329,6 @@ def bivariate_correlation_by_month_plot(bcorr_dict, label, title, output_filenam
         plt.close()
     else:
         plt.show()
-    
-def bivariate_mse_vs_phase_plot(bmse_dict, labels, output_filename, show_error = False, stacked = False, figsize = (24, 6), sharey = True):
-    """
-    Plot 3 subplots (Weeks 1-2, 3-4, 5-6) showing BMSE vs phase for multiple data sources.
-
-    Parameters
-    ----------
-    bmse_dict : list of dict
-        Each element corresponds to one data source (match to `labels`).
-        Each dict maps `phase` -> array of shape (42, 2), where the last dim is
-        [BMSEA, BMSEP]. We compute BMSE = BMSEA + BMSEP.
-        Phase keys can be int or str (e.g., 1..8 or "1".."8").
-    labels : list of str
-        Names of the data sources. Must match len(bmse_dict).
-    output_filename : str
-        Path to save the resulting figure (e.g., "bmse_vs_phase.png").
-    show_error : bool, default True
-        Show y-error bars (std across leads within the week bin) for BMSE totals.
-        (Ignored for stacked components—error bars represent totals only.)
-    stacked : bool, default False
-        If True, bars are stacked to show BMSEA and BMSEP composition.
-        If False, bars show only the total BMSE.
-    figsize : (int, int), default (12, 4)
-        Figure size.
-    dpi : int, default 150
-        Dots per inch for saved figure.
-    sharey : bool, default True
-        Share y-axis across subplots for easier comparison.
-
-    Returns
-    -------
-    df_agg : pd.DataFrame
-        Tidy aggregated data with columns:
-        ['label', 'phase', 'bin_index', 'bin_name',
-         'bmse_mean', 'bmse_std', 'bmsea_mean', 'bmsep_mean'].
-    fig : matplotlib.figure.Figure
-        The Matplotlib figure object.
-
-    Notes
-    -----
-    - Lead indexing (42 leads) is split into 3 bins:
-        Weeks 1-2: leads 1-14  -> indices [0:14]
-        Weeks 3-4: leads 15-28 -> indices [14:28]
-        Weeks 5-6: leads 29-42 -> indices [28:42]
-    - Assumes the trailing axis order is [BMSEA, BMSEP].
-      BMSE is computed as BMSEA + BMSEP, so order does not affect the total.
-    """
-    if len(bmse_dict) != len(labels):
-        raise ValueError("len(bmse_dict) must match len(labels).")
-
-    # Define week bins as slices over the 42-lead axis
-    bins = [
-        (slice(0, 14), "Weeks 1-2 (Leads 1-14)"),
-        (slice(14, 28), "Weeks 3-4 (Leads 15-28)"),
-        (slice(28, 42), "Weeks 5-6 (Leads 29-42)"),
-    ]
-
-    # Determine phases across all sources (union), coerce to ints, then sort 1..8
-    phases_all = set()
-    for src in bmse_dict:
-        for ph in src.keys():
-            try:
-                phases_all.add(int(ph))
-            except Exception:
-                # If not coercible, keep as-is; but plotting expects ints 1..8
-                raise ValueError(f"Phase key '{ph}' is not an int or int-like string.")
-    phases = sorted(phases_all)  # expected [1..8], but will honor whatever is present
-    n_phases = len(phases)
-    n_sources = len(labels)
-
-    # Aggregate into a tidy DataFrame
-    rows = []
-    for label, src in zip(labels, bmse_dict):
-        for ph in phases:
-            if ph not in src and str(ph) not in src:
-                # Missing phase for this source; fill NaNs
-                arr = np.full((42, 2), np.nan, dtype=float)
-            else:
-                arr = src.get(ph, src.get(str(ph)))
-                if not isinstance(arr, np.ndarray) or arr.shape != (42, 2):
-                    raise ValueError(
-                        f"For label '{label}', phase '{ph}', expected array shape (42,2); got {getattr(arr, 'shape', None)}"
-                    )
-
-            bmsea = arr[:, 0]
-            bmsep = arr[:, 1]
-            bmse = bmsea + bmsep
-
-            for b_idx, (slc, b_name) in enumerate(bins):
-                chunk = bmse[slc]
-                chunk_a = bmsea[slc]
-                chunk_p = bmsep[slc]
-
-                rows.append({
-                    "label": label,
-                    "phase": ph,
-                    "bin_index": b_idx,
-                    "bin_name": b_name,
-                    "bmse_mean": np.nanmean(chunk),
-                    "bmse_std": np.nanstd(chunk, ddof=1) if np.sum(~np.isnan(chunk)) > 1 else np.nan,
-                    "bmsea_mean": np.nanmean(chunk_a),
-                    "bmsep_mean": np.nanmean(chunk_p),
-                })
-
-    df_agg = pd.DataFrame(rows)
-
-    # Start plotting
-    fig, axes = plt.subplots(1, 3, figsize=figsize, dpi=300, sharey=sharey)
-    if not isinstance(axes, np.ndarray):
-        axes = np.array([axes])  # safety for edge cases
-
-    # Bar layout
-    x = np.arange(n_phases)  # positions for phases
-    total_group_width = 0.8
-    bar_width = total_group_width / max(1, n_sources)
-    # Leftmost offset so groups are centered on each phase tick
-    offsets = (np.arange(n_sources) - (n_sources - 1) / 2.0) * bar_width
-
-    # Shared y-limits across subplots (based on totals)
-    if sharey:
-        ymax = 0.0
-        for b_idx in range(3):
-            df_bin = df_agg[df_agg["bin_index"] == b_idx]
-            ymax = max(ymax, np.nanmax(df_bin["bmse_mean"].values))
-        if np.isfinite(ymax):
-            y_max_lim = (np.ceil(ymax * 20) / 20) if ymax > 0 else 1.0  # round up a bit
-        else:
-            y_max_lim = None
-    else:
-        y_max_lim = None
-
-    # Draw subplots
-    for b_idx, ax in enumerate(axes):
-        df_bin = df_agg[df_agg["bin_index"] == b_idx]
-
-        for s_idx, label in enumerate(labels):
-            df_ls = df_bin[df_bin["label"] == label].set_index("phase").reindex(phases)
-
-            heights_total = df_ls["bmse_mean"].values
-            yerr = df_ls["bmse_std"].values if show_error and not stacked else None
-
-            xpos = x + offsets[s_idx]
-
-            if stacked:
-                # Draw BMSEA and stack BMSEP on top
-                a_part = df_ls["bmsea_mean"].values
-                p_part = df_ls["bmsep_mean"].values
-
-                ax.bar(xpos, a_part, width=bar_width, label=(label if b_idx == 0 else None))
-                ax.bar(xpos, p_part, width=bar_width, bottom=a_part)
-                # Error bars on totals if requested (visually okay on stacks)
-                if show_error and yerr is not None:
-                    ax.errorbar(xpos, a_part + p_part, yerr=yerr, fmt='none', capsize=3, linewidth=1)
-            else:
-                ax.bar(xpos, heights_total, width=bar_width, label=(label if b_idx == 0 else None), yerr=yerr, capsize=3)
-
-        # Axis cosmetics
-        ax.set_title(df_ls["bin_name"].iloc[0] if not df_ls.empty else ["Weeks 1-2","Weeks 3-4","Weeks 5-6"][b_idx])
-        ax.set_xticks(x)
-        ax.set_xticklabels([str(p) for p in phases])
-        ax.set_xlabel("Phase")
-        ax.grid(axis="y", alpha=0.3)
-        if y_max_lim is not None:
-            ax.set_ylim(0, y_max_lim)
-
-        if b_idx == 0:
-            ax.set_ylabel("BMSE")
-
-    # Single legend (labels only need to appear once; we added them on b_idx==0)
-    handles, leg_labels = axes[0].get_legend_handles_labels()
-    if handles:
-        fig.legend(handles, leg_labels, loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False)
-
-    fig.tight_layout(rect=(0, 0, 0.92, 1))  # leave space on right for legend
-    if output_filename:
-        fig.savefig(output_filename, dpi=300, bbox_inches="tight")
-    else:
-        plt.show()
-
-def bivariate_correlation_vs_phase_plot(bcorr_dict, labels, output_filename, show_error = False, figsize = (24, 6), sharey =True):
-    """
-    Plot 3 subplots (Weeks 1-2, 3-4, 5-6) showing BCorr vs phase for multiple data sources.
-
-    Parameters
-    ----------
-    bcorr_dict : list of dict
-        Each element corresponds to one data source (match to `labels`).
-        Each dict maps `phase` -> array of shape (42,), correlation per lead.
-    labels : list of str
-        Names of the data sources. Must match len(bcorr_dict).
-    output_filename : str
-        Path to save the resulting figure (e.g., "bcorr_vs_phase.png").
-    show_error : bool, default True
-        Show y-error bars (std across leads within the week bin).
-    figsize : (int, int), default (12, 4)
-        Figure size.
-    dpi : int, default 150
-        Dots per inch for saved figure.
-    sharey : bool, default True
-        Share y-axis across subplots for easier comparison.
-
-    Returns
-    -------
-    df_agg : pd.DataFrame
-        Tidy aggregated data with columns:
-        ['label', 'phase', 'bin_index', 'bin_name', 'bcorr_mean', 'bcorr_std'].
-    fig : matplotlib.figure.Figure
-        The Matplotlib figure object.
-    """
-    if len(bcorr_dict) != len(labels):
-        raise ValueError("len(bcorr_dict) must match len(labels).")
-
-    # Week bins over the 42 leads (1-indexed leads → these 0-indexed slices)
-    bins = [
-        (slice(0, 14), "Weeks 1-2 (Leads 1-14)"),
-        (slice(14, 28), "Weeks 3-4 (Leads 15-28)"),
-        (slice(28, 42), "Weeks 5-6 (Leads 29-42)"),
-    ]
-
-    # Union of phases across all sources; force int and sort
-    phases_all = set()
-    for src in bcorr_dict:
-        for ph in src.keys():
-            try:
-                phases_all.add(int(ph))
-            except Exception:
-                raise ValueError(f"Phase key '{ph}' is not an int or int-like string.")
-    phases = sorted(phases_all)
-    n_phases = len(phases)
-    n_sources = len(labels)
-
-    # Aggregate into tidy frame
-    rows = []
-    for label, src in zip(labels, bcorr_dict):
-        for ph in phases:
-            arr = src.get(ph, src.get(str(ph)))
-            if not isinstance(arr, np.ndarray) or arr.shape != (42,):
-                # Missing phase or wrong shape → fill NaNs so it plots as empty
-                arr = np.full((42,), np.nan, dtype=float)
-
-            for b_idx, (slc, b_name) in enumerate(bins):
-                chunk = arr[slc]
-                rows.append({
-                    "label": label,
-                    "phase": ph,
-                    "bin_index": b_idx,
-                    "bin_name": b_name,
-                    "bcorr_mean": np.nanmean(chunk),
-                    "bcorr_std": np.nanstd(chunk, ddof=1) if np.sum(~np.isnan(chunk)) > 1 else np.nan,
-                })
-
-    df_agg = pd.DataFrame(rows)
-
-    # Create figure
-    fig, axes = plt.subplots(1, 3, figsize=figsize, dpi=300, sharey=sharey)
-    if not isinstance(axes, np.ndarray):
-        axes = np.array([axes])
-
-    # Bar layout
-    x = np.arange(n_phases)
-    total_group_width = 0.8
-    bar_width = total_group_width / max(1, n_sources)
-    offsets = (np.arange(n_sources) - (n_sources - 1) / 2.0) * bar_width
-
-    # Shared y-limits across subplots
-    if sharey and not df_agg.empty:
-        ymin = np.nanmin(df_agg["bcorr_mean"].values)
-        ymax = np.nanmax(df_agg["bcorr_mean"].values)
-        if np.isfinite(ymin) and np.isfinite(ymax):
-            pad = 0.04 * max(1e-6, (ymax - ymin))
-            y_limits = (ymin - pad, ymax + pad)
-        else:
-            y_limits = None
-    else:
-        y_limits = None
-
-    # Draw
-    for b_idx, ax in enumerate(axes):
-        df_bin = df_agg[df_agg["bin_index"] == b_idx]
-
-        for s_idx, label in enumerate(labels):
-            df_ls = df_bin[df_bin["label"] == label].set_index("phase").reindex(phases)
-
-            heights = df_ls["bcorr_mean"].values
-            yerr = df_ls["bcorr_std"].values if show_error else None
-            xpos = x + offsets[s_idx]
-
-            ax.bar(xpos, heights, width=bar_width, label=(label if b_idx == 0 else None),
-                   yerr=yerr, capsize=3)
-
-        title = df_bin["bin_name"].iloc[0] if not df_bin.empty else ["Weeks 1-2","Weeks 3-4","Weeks 5-6"][b_idx]
-        ax.set_title(title)
-        ax.set_xticks(x)
-        ax.set_xticklabels([str(p) for p in phases])
-        ax.set_xlabel("Phase")
-        ax.grid(axis="y", alpha=0.3)
-        if y_limits is not None:
-            ax.set_ylim(*y_limits)
-        if b_idx == 0:
-            ax.set_ylabel("BCorr")
-
-    # Single legend on the right
-    handles, leg_labels = axes[0].get_legend_handles_labels()
-    if handles:
-        fig.legend(handles, leg_labels, loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False)
-
-    fig.tight_layout(rect=(0, 0, 0.92, 1))
-    if output_filename:
-        fig.savefig(output_filename, dpi=300, bbox_inches="tight")
-    else:
-        plt.show()
-
 
 def bivariate_correlation_vs_lead_time_heatmap(
     lead_times: Sequence[Sequence[Union[int, float]]],     # (N, T_i)
@@ -709,9 +419,9 @@ def bivariate_correlation_vs_lead_time_heatmap(
         ax.set_yticks(yt_idx + 0.5)               # put tick on upper edge
         ax.set_yticklabels([str(leads_sorted[j]) for j in yt_idx])
 
-        ax.set_xlabel("Lookback Window (days)")
+        ax.set_xlabel("Lookback window (days)")
         if i == 0:
-            ax.set_ylabel("Lead Time (days)")
+            ax.set_ylabel("Lead time (days)")
         ax.set_title(lab)
 
         # place bars on the LOWER edge of the day cell (index - 0.5)
@@ -728,7 +438,7 @@ def bivariate_correlation_vs_lead_time_heatmap(
 
         # legend (top-right, boxed) on every subplot
         bar_proxy = Line2D([0], [0], color="k", lw=1.3, label=f"{threshold} skill threshold")
-        ax.legend(handles=[bar_proxy], loc="upper right", frameon=True, fancybox=True, framealpha=0.95)
+        ax.legend(handles=[bar_proxy], loc="lower right", frameon=True, fancybox=True, framealpha=0.95)
 
         # tighten to exact image edges so ticks at -0.5 and T_i-0.5 align with borders
         ax.set_xlim(-0.5, L_i - 0.5)
@@ -737,7 +447,7 @@ def bivariate_correlation_vs_lead_time_heatmap(
     # shared colorbar
     if last_im is not None:
         cbar = fig.colorbar(last_im, ax=axes, shrink=0.9, pad=0.02, boundaries=bounds, ticks=bounds, spacing="proportional")
-        cbar.set_label("Bivariate Correlation")
+        cbar.set_label("Bivariate correlation")
         cbar.ax.invert_yaxis()  # show 1 at bottom, 0 at top (colors unchanged)
 
 
@@ -745,3 +455,394 @@ def bivariate_correlation_vs_lead_time_heatmap(
         fig.savefig(output_filename, dpi=300, bbox_inches="tight")
 
     return fig, axes
+
+def hexbin_skill_vs_amplitude_plot(
+    data: np.ndarray,                 # shape (T, N, 2) -> [:, :, 0]=amplitude, [:, :, 1]=skill
+    output_filename: str,
+    improvement = False,
+    forecasted_amplitude = False,
+    *,
+    amp_range: Tuple[float, float] = (0.0, 3.5),
+    skill_range: Tuple[float, float] = (-1.5, 1.5),
+    gridsize: int = 60,
+    boundaries: Optional[Sequence[int]] = None,  # discrete count bins for colorbar
+    cmap: str = "YlGnBu",
+):
+    """
+    Creates a 3-panel hexbin of skill vs amplitude for weeks 1+2, 3+4, 5+6.
+
+    Weeks are defined as:
+      - Weeks 1+2: leads 1–14  -> data[0:14]
+      - Weeks 3+4: leads 15–28 -> data[14:28]
+      - Weeks 5+6: leads 29–42 -> data[28:42]
+    """
+    assert data.ndim == 3 and data.shape[2] == 2, "Expected data with shape (T, N, 2)."
+    T = data.shape[0]
+    if T < 42:
+        raise ValueError("Expected at least 42 lead times along axis 0.")
+
+    # Default discrete boundaries tuned for counts mostly <30 but allowing up to ~120.
+    # Edit this list if you want different steps.
+    if boundaries is None:
+        boundaries = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144]  # Fibonacci-ish up to >120
+    boundaries = np.asarray(boundaries, dtype=float)
+
+    # Build a discrete norm using the provided boundaries
+    base = plt.get_cmap("YlGnBu")
+    cmap = ListedColormap(base(np.linspace(0.15, 1.0, 256)))  # truncate light end
+
+    norm = BoundaryNorm(boundaries, ncolors=cmap.N, clip=False)
+
+    # Week slices in 0-based indexing for leads 1..42
+    week_slices = [(0, 14), (14, 28), (28, 42)]
+    titles = ["Weeks 1-2", "Weeks 3-4", "Weeks 5-6"]
+
+    fig = plt.figure(figsize=(13.5, 4.2))
+    gs  = fig.add_gridspec(1, 4, width_ratios=[1, 1, 1, 0.05], wspace=0.05)
+
+    axes = [fig.add_subplot(gs[0, 0])]
+    axes.append(fig.add_subplot(gs[0, 1], sharey=axes[0]))
+    axes.append(fig.add_subplot(gs[0, 2], sharey=axes[0]))
+    cax  = fig.add_subplot(gs[0, 3])
+    for ax in axes[1:]:
+        ax.tick_params(labelleft=False)
+
+    hexbins = []
+    counts_per_panel = []
+
+
+    for ax, (start, end), title in zip(axes, week_slices, titles):
+        # Extract amplitude & skill across the selected leads and flatten
+        panel = data[start:end, :, :]  # shape (leads_window, N, 2)
+        amp = panel[..., 0].ravel()
+        skill = panel[..., 1].ravel()
+
+        # Filter finite values and within the plotting ranges
+        m = np.isfinite(amp) & np.isfinite(skill)
+        amp, skill = amp[m], skill[m]
+
+        # Clip to plotting range so extreme outliers don’t skew autoscaling of hexbin
+        in_range = (amp_range[0] <= amp) & (amp <= amp_range[1]) & \
+                   (skill_range[0] <= skill) & (skill <= skill_range[1])
+        amp, skill = amp[in_range], skill[in_range]
+        counts_per_panel.append(amp.size)
+
+        hb = ax.hexbin(
+            amp, skill,
+            gridsize=gridsize,
+            extent=(amp_range[0], amp_range[1], skill_range[0], skill_range[1]),
+            mincnt=1,            # only color cells with >=1 point; empty cells stay background
+            cmap=cmap,
+            norm=norm,           # discrete bins
+            linewidths=0.0
+        )
+        hexbins.append(hb)
+
+        ax.set_title(title)
+        ax.set_xlim(amp_range)
+        ax.set_ylim(skill_range)
+        ax.set_xlabel("Forecasted amplitude" if forecasted_amplitude else "Initial amplitude")
+
+
+    xticks = np.arange(amp_range[0], amp_range[1], 0.5)
+    for ax in axes:
+        ax.set_xticks(xticks)
+    
+    axes[0].set_ylabel("Improvement in bivariate correlation" if improvement else 'Bivariate correlation')
+
+
+    cb = fig.colorbar(hexbins[0], cax=cax, boundaries=boundaries, spacing="proportional")
+    cb.set_label("Count")
+    # Pick readable tick labels (every other boundary except the first)
+    cb.set_ticks(boundaries[[4,6,7,8,9,10]])
+    fig.tight_layout()
+    fig.savefig(output_filename, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+
+def histogram_skill_vs_phase_plot(
+    data: np.ndarray,                 # shape (Y, T=42, N, 2): [:,:,:,0]=phase, [:,:,:,1]=skill
+    output_filename: str,
+    labels,                           # e.g., ['2019','2020','2021'] length = Y
+    improvement = False,
+    forecasted_phase = False,
+    *,
+    phase_values=tuple(range(1, 9)),  # phases 1..8
+    figsize=(12, 4),
+    bar_alpha=0.95,
+    skill_range=(0, 1),
+    cmap_name="YlGnBu",
+    legend_position="bottom"          # "bottom" (default) or "right"
+):
+    assert data.ndim == 4 and data.shape[-1] == 2, "data must be (Y, T, N, 2)"
+    Y, T, N, _ = data.shape
+    assert T >= 42, "Expected at least 42 lead times"
+    assert len(labels) == Y, "labels length must match Y"
+
+    week_groups = [
+        ("Weeks 1-2", 1, 14),
+        ("Weeks 3-4", 15, 28),
+        ("Weeks 5-6", 29, 42),
+    ]
+
+    cmap = cm.get_cmap(cmap_name)
+    colors = [cmap(v) for v in np.linspace(0.25, 0.9, Y)] if Y > 1 else [cmap(0.7)]
+
+    fig, axes = plt.subplots(1, 3, figsize=figsize, sharey=True)
+    x = np.arange(len(phase_values), dtype=float)
+
+    n_years = Y
+    total_width = 0.85
+    bar_width = total_width / n_years
+    offsets = (np.arange(n_years) - (n_years - 1) / 2) * bar_width
+
+    # draw bars
+    for ax, (title, start_lt, end_lt) in zip(axes, week_groups):
+        lt_slice = slice(start_lt - 1, end_lt)
+
+        for y_idx in range(Y):
+            phases = data[y_idx, lt_slice, :, 0].reshape(-1)
+            skills = data[y_idx, lt_slice, :, 1].reshape(-1)
+
+            valid = np.isfinite(phases) & np.isfinite(skills)
+            phases_i = phases[valid].astype(int)
+            skills_v = skills[valid]
+
+            means = np.full(len(phase_values), np.nan)
+            for i, p in enumerate(phase_values):
+                m = phases_i == p
+                if np.any(m):
+                    means[i] = np.nanmean(skills_v[m])
+
+            means_plot = np.where(np.isnan(means), 0.0, means)
+
+            ax.bar(
+                x + offsets[y_idx],
+                means_plot,
+                width=bar_width * 0.95,
+                alpha=bar_alpha,
+                label=labels[y_idx],          # keep labels here; we'll grab them for fig.legend
+                color=colors[y_idx],
+                edgecolor='black',
+                linewidth=0.6,
+            )
+
+        ax.set_title(title)
+        ax.set_xlabel("Forecasted phase" if forecasted_phase else "Initial phase")
+        ax.set_xticks(x)
+        ax.set_xticklabels([str(p) for p in phase_values])
+        ax.grid(axis='y', linestyle=':', linewidth=0.8, alpha=0.7)
+        ax.set_ylim(*skill_range)
+
+    axes[0].set_ylabel("Improvement in bivariate correlation" if improvement else 'Bivariate correlation')
+
+    # ----- Figure-level legend placement -----
+    handles, leg_labels = axes[0].get_legend_handles_labels()
+    # remove per-axes legends
+    for ax in axes:
+        ax.legend_.remove() if ax.get_legend() else None
+
+    if legend_position == "right":
+        # make space on the right
+        plt.subplots_adjust(right=0.84)
+        fig.legend(
+            handles, leg_labels,
+            loc="center left",
+            bbox_to_anchor=(0.86, 0.5),
+            frameon=False,
+        )
+    else:  # "bottom"
+        # make space at the bottom
+        plt.subplots_adjust(bottom=0.30)
+        fig.legend(
+            handles, leg_labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, -0.06),
+            ncol=min(Y, 6),
+            frameon=False,
+        )
+
+    fig.tight_layout()
+    plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+
+def bivariate_correlation_by_month_multi_year_plot(
+    bcorr_dicts,                          # list[dict[int->array_like]] length=3; each dict: {month(1..12): (lead_time,)}
+    label: str,
+    year_titles=None,                     # optional list[str] length=3 for subplot titles (e.g., ["2019","2020","2021"])
+    output_filename: str = None,
+    *,
+    levels = np.linspace(0.1, 1.0, 10),   # discretized colorbar levels (inclusive of min/max for nice bins)
+    threshold: float = 0.5,
+    cmap: str = "YlGnBu",                 # “YlGnBu” is the Matplotlib name
+    colorbar_orientation: str = "horizontal"
+):
+    """
+    Makes 3 subplots (one per year) of bivariate correlation (skill) as a function of month (x) and lead time (y),
+    with a shared, discretized colorbar in YlGnBu. Draws a contour line at `threshold`.
+    """
+    assert len(bcorr_dicts) == 3, "Pass exactly 3 dicts (one per year)."
+
+    # Consistent month order and lead-time length
+    months = list(range(1, 13))
+    lead_times = len(next(iter(bcorr_dicts[0].values())))
+    for d in bcorr_dicts:
+        assert all(m in d for m in months), "Each dict must have months 1..12."
+        assert all(len(d[m]) == lead_times for m in months), "All months must share the same lead-time length."
+
+    # Stack each year's metric into (lead_time, 12)
+    metric_arrays = [np.stack([d[m] for m in months], axis=-1) for d in bcorr_dicts]
+
+    # Discretization: shared bounds across all subplots
+    vmin, vmax = float(np.min(levels)), float(np.max(levels))
+    norm = BoundaryNorm(levels, ncolors=plt.get_cmap(cmap).N, clip=True)
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5), sharex=True, sharey=True)
+    if not isinstance(axes, np.ndarray):
+        axes = np.array([axes])
+
+    # Plot each year
+    contour_sets = []
+    for i, (ax, arr) in enumerate(zip(axes, metric_arrays)):
+        c = ax.contourf(
+            months,
+            np.arange(1, lead_times + 1),
+            arr,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            extend="both",
+        )
+        contour_sets.append(c)
+
+        # Threshold contour line (drawn over the filled contours)
+        cs = ax.contour(
+            months,
+            np.arange(1, lead_times + 1),
+            arr,
+            levels=[threshold],
+            colors="black",
+            linewidths=1.0,
+        )
+        ax.clabel(cs, fmt="%.2f", inline=True, fontsize=11)
+
+        # Month ticks & labels
+        ax.set_xticks(months)
+        ax.set_xticklabels(["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], rotation=0)
+
+        # Titles per subplot
+        if year_titles and len(year_titles) == 3:
+            ax.set_title(year_titles[i])
+        else:
+            ax.set_title(f"Year {i+1}")
+
+        # Y label only on the first subplot
+        if i == 0:
+            ax.set_ylabel("Lead time (days)")
+
+    # Shared discretized colorbar
+    # Use the last contour set; all share the same norm/levels so any works.
+    cbar = fig.colorbar(
+        contour_sets[-1],
+        ax=axes,
+        orientation=colorbar_orientation,
+        pad=0.4 if colorbar_orientation == "horizontal" else 0.02,
+        fraction=0.05,
+        aspect=40,
+        ticks=levels
+    )
+    cbar.set_label(label)
+
+    # Nice layout
+    plt.tight_layout(rect=(0, 0.195, 1, 0.95))  # leave bottom space for the bar
+
+    if output_filename:
+        plt.savefig(output_filename, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def scatter_amplitudes_by_init_date_tripanel(
+    data,                         # (T, 42, 2): [...,0]=amplitude, [...,1]=correct {0,1}
+    dates,                        # length T
+    *,
+    colors_cmap="YlGnBu",
+    point_size=18,
+    super_title="FuXi-S2S amplitudes by initialization date",
+    x_label="Forecasted amplitude",
+    y_label="Initialization date",
+    sort_by_date=True,
+    invert_y=False,
+    jitter_days=0.0,              # e.g., 0.0003 ≈ 26 seconds
+    y_tick_stride=1,
+    output_filename=None
+):
+    data   = np.asarray(data)
+    assert data.ndim == 3 and data.shape[1] == 42 and data.shape[2] == 2, "data must be (T,42,2)"
+    T      = data.shape[0]
+    assert len(dates) == T, "len(dates) must equal T"
+
+    amps       = data[..., 0]
+    is_correct = data[..., 1].astype(bool)
+
+    dates_np = np.array(pd.to_datetime(dates)).astype("datetime64[ns]")
+    if sort_by_date:
+        order = np.argsort(dates_np)
+        amps, is_correct, dates_np = amps[order], is_correct[order], dates_np[order]
+
+    dates_dt = pd.to_datetime(dates_np).to_pydatetime()
+    y_num    = mdates.date2num(dates_dt)
+
+    def jitter(y):
+        if jitter_days <= 0: return y
+        return y + np.random.uniform(-jitter_days, jitter_days, size=y.shape)
+
+    cmap = plt.get_cmap(colors_cmap)
+    # 6 colors for 6 weeks, spaced through the colormap
+    panel_colors = [cmap(x) for x in np.linspace(0.95, 0.45, 6)]
+    panel_titles = [f"Week {i+1}" for i in range(6)]
+    week_bins = [(i*7+1, (i+1)*7) for i in range(6)]  # [(1,7), (8,14), ..., (36,42)]
+
+    fig, axes = plt.subplots(1, 6, figsize=(28, 8), sharey=True)
+
+    for ax, (lo, hi), color, title in zip(axes, week_bins, panel_colors, panel_titles):
+        cols  = slice(lo-1, hi)
+        X     = amps[:, cols]                      # (T, ncols)
+        Y     = np.repeat(y_num[:, None], X.shape[1], axis=1)
+        masks = {True: is_correct[:, cols], False: ~is_correct[:, cols]}
+        styles = {True: dict(marker='o', edgecolors="none", linewidths=max(0.5, point_size/12), alpha=1.0),
+                  False: dict(marker='x', linewidths=max(1.2, point_size/8), alpha=0.6)}
+
+        for ok in (True, False):
+            m = masks[ok]
+            if m.any():
+                ax.scatter(
+                    X[m], jitter(Y)[m],
+                    s=point_size, c=[color], zorder=2 if ok else 3,
+                    **styles[ok], label=("Correct" if ok else "Incorrect")
+                )
+
+        ax.set_title(title)
+        ax.set_xlabel(x_label)
+        ax.set_xlim(0, 3)
+        ax.grid(True, axis="x", linestyle=":", linewidth=0.8, alpha=0.6)
+
+    # Y-axis labels/ticks (left panel only; sharey=True keeps alignment)
+    axes[0].set_ylabel(y_label)
+    yticks  = y_num[::y_tick_stride] if y_tick_stride > 1 else y_num
+    ylabels = [d.strftime("%Y-%m-%d") for d in (np.array(dates_dt)[::y_tick_stride] if y_tick_stride > 1 else dates_dt)]
+    axes[0].set_yticks(yticks)
+    axes[0].set_yticklabels(ylabels)
+    axes[0].yaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    if invert_y:
+        axes[0].invert_yaxis()
+
+    fig.suptitle(super_title, y=0.98)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+
+    if output_filename:
+        fig.savefig(output_filename, bbox_inches="tight", dpi=300)
+    else:
+        plt.show()
