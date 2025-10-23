@@ -218,10 +218,12 @@ def bivariate_correlation_vs_lead_time_plot(lead_times, correlations, labels, ou
     # plt.title('Bivariate Correlation vs Lead Time')
     plt.legend()
     ax = plt.gca()
+    ax.set_ylim(0.3, 1.0)
+    ax.set_xlim(0, 43)
     ax.xaxis.set_major_locator(ticker.MultipleLocator(1))   # grid every day
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{int(x)}" if x % 10 == 0 else ""))  # label every 10 days
-    plt.grid(which='major', axis='x', linestyle='-', linewidth=0.5)
-    plt.grid(which='major', axis='y')
+    # plt.grid(which='major', axis='x', linestyle='-', linewidth=0.5)
+    # plt.grid(which='major', axis='y')
     plt.tight_layout()
     if output_filename:
         plt.savefig(output_filename, dpi=300, bbox_inches='tight')
@@ -247,10 +249,12 @@ def bivariate_mse_vs_lead_time_plot(lead_times, bmsea, bmsep, labels, output_fil
     plt.legend()
     plt.tight_layout()
     ax = plt.gca()
+    ax.set_ylim(0, 2.0)
+    ax.set_xlim(0, 43)
     ax.xaxis.set_major_locator(ticker.MultipleLocator(1))   # grid every day
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{int(x)}" if x % 10 == 0 else ""))  # label every 10 days
-    plt.grid(which='major', axis='x', linestyle='-', linewidth=0.5)
-    plt.grid(which='major', axis='y')
+    # plt.grid(which='major', axis='x', linestyle='-', linewidth=0.5)
+    # plt.grid(which='major', axis='y')
     if output_filename:
         plt.savefig(output_filename, dpi=300, bbox_inches='tight')
         plt.close()
@@ -339,17 +343,17 @@ def bivariate_correlation_vs_lead_time_heatmap(
     *,
     threshold: float = 0.5,
     bar_half_width: float = 0.35,  # half the horizontal length of each bar (x-index units)
+    fuxi_correlations: Optional[np.ndarray] = None,        # (T_i,) or None
 ) -> Tuple[plt.Figure, List[plt.Axes]]:
     """
     N heatmaps (one per model) with x=lookback (categories), y=lead time (categories).
+    Optionally, if fuxi_correlations is provided, plot a narrow heatmap (1 column) in the middle.
     Shared Blues colorbar. For each lookback column, draw a short horizontal black bar
     at the first lead-time *index* where correlation falls below `threshold`
     (bar placed at the *lower edge* of that day cell). Y ticks are placed on the
     *upper edge* of cells so the max day label sits exactly at the top border.
     """
-    N = len(labels)
-    if not (len(lead_times) == len(lookbacks) == len(correlations) == N):
-        raise ValueError("lead_times, lookbacks, correlations, and labels must all have length N.")
+    from matplotlib import colors as mcolors
 
     def first_crossing_yindex(vals: np.ndarray, thr: float = 0.5) -> float:
         v = np.asarray(vals, dtype=float)
@@ -364,29 +368,62 @@ def bivariate_correlation_vs_lead_time_heatmap(
                 return float(j) + float(frac)
         return float("nan")
 
-    fig, axes = plt.subplots(1, N, figsize=(5.6 * N, 4.3), constrained_layout=True)
-    if N == 1:
-        axes = [axes]
+    N = len(labels)
+    if not (len(lead_times) == len(lookbacks) == len(correlations) == N):
+        raise ValueError("lead_times, lookbacks, correlations, and labels must all have length N.")
 
+    has_fuxi = fuxi_correlations is not None
+    if has_fuxi:
+        fuxi_correlations = np.asarray(fuxi_correlations, dtype=float)
+        if fuxi_correlations.ndim != 1:
+            raise ValueError("fuxi_correlations should be a 1D array (T_i,), got shape {}".format(fuxi_correlations.shape))
+    num_panels = N + (1 if has_fuxi else 0)
+
+    # Key CHANGE: Specify widths so that the middle panel is very narrow if fuxi_correlations is given
+    if has_fuxi:
+        width = 0.15
+        widths = [1] * (num_panels // 2) + [width] + [1] * (num_panels - 1 - num_panels // 2)
+        total_width = sum(widths)
+        figsize = (5.6 * (sum(widths)), 4.3)
+        fig, axes = plt.subplots(1, num_panels, figsize=figsize, gridspec_kw={'width_ratios': widths}, constrained_layout=True)
+    else:
+        fig, axes = plt.subplots(1, num_panels, figsize=(5.6 * num_panels, 4.3), constrained_layout=True)
+    if num_panels == 1:
+        axes = [axes]
+    
     cmap = "YlGnBu"
-    bounds = np.arange(0.0, 1.0 + 0.1, 0.1)  # 0.0, 0.1, ..., 1.0
+    bounds = np.arange(0.0, 1.0 + 0.1, 0.1)
     norm = mcolors.BoundaryNorm(boundaries=bounds, ncolors=plt.get_cmap(cmap).N, clip=True)
     last_im = None
 
-    for i, (ax, lab) in enumerate(zip(axes, labels)):
-        arr = np.asarray(correlations[i], dtype=float)   # (L, T)
-        leads = np.asarray(lead_times[i])
-        looks = np.asarray(lookbacks[i])
+    axis_indices = list(range(num_panels))
+    if has_fuxi:
+        middle = num_panels // 2
+        model_axes = [i for i in range(num_panels) if i != middle]
+        fuxi_axis = middle
+    else:
+        model_axes = list(range(num_panels))
+        fuxi_axis = None
+
+    current_model = 0
+    for i in range(num_panels):
+        if has_fuxi and i == fuxi_axis:
+            continue
+        ax = axes[i]
+        lab = labels[current_model]
+        arr = np.asarray(correlations[current_model], dtype=float)
+        leads = np.asarray(lead_times[current_model])
+        looks = np.asarray(lookbacks[current_model])
+        current_model += 1
 
         if arr.ndim != 2:
-            raise ValueError(f"correlations[{i}] must be 2D, got {arr.shape}.")
+            raise ValueError(f"correlations[{current_model-1}] must be 2D, got {arr.shape}.")
         L_i, T_i = arr.shape
         if len(leads) != T_i:
-            raise ValueError(f"lead_times[{i}] length {len(leads)} != correlations[{i}].shape[1] {T_i}.")
+            raise ValueError(f"lead_times[{current_model-1}] length {len(leads)} != correlations[{current_model-1}].shape[1] {T_i}.")
         if len(looks) != L_i:
-            raise ValueError(f"lookbacks[{i}] length {len(looks)} != correlations[{i}].shape[0] {L_i}.")
+            raise ValueError(f"lookbacks[{current_model-1}] length {len(looks)} != correlations[{current_model-1}].shape[0] {L_i}.")
 
-        # sort lookbacks ascending (x-axis)
         try:
             order_looks = np.argsort(looks.astype(float))
         except Exception:
@@ -394,7 +431,6 @@ def bivariate_correlation_vs_lead_time_heatmap(
         looks_sorted = looks[order_looks]
         arr = arr[order_looks, :]
 
-        # ensure lead_times ascending (y-axis)
         try:
             order_leads = np.argsort(leads.astype(float))
         except Exception:
@@ -402,59 +438,92 @@ def bivariate_correlation_vs_lead_time_heatmap(
         leads_sorted = leads[order_leads]
         arr = arr[:, order_leads]
 
-        # transpose so x = lookback (columns), y = lead time (rows)
-        A = arr.T  # shape (T, L)
+        A = arr.T
 
-        # heatmap (imshow uses cell centers at integer indices)
         im = ax.imshow(A, origin="lower", aspect="auto", cmap=cmap, norm=norm)
         last_im = im
 
-        # x ticks centered on lookbacks
         ax.set_xticks(np.arange(L_i))
-        ax.set_xticklabels([str(x) for x in looks_sorted])
+        ax.set_xticklabels([r"$\varnothing$" if x == 0 else str(x) for x in looks_sorted])
 
-        # y ticks on the UPPER edge of selected rows (so top label sits on the top border)
         step = 3
-        yt_idx = np.arange(0, T_i, step)          # 0,3,6,... in index space
-        ax.set_yticks(yt_idx + 0.5)               # put tick on upper edge
+        yt_idx = np.arange(0, T_i, step)
+        ax.set_yticks(yt_idx + 0.5)
         ax.set_yticklabels([str(leads_sorted[j]) for j in yt_idx])
 
         ax.set_xlabel("Lookback window (days)")
-        if i == 0:
+        # Y-label and y-ticks: show only on the leftmost subplot
+        if i == model_axes[0]:
             ax.set_ylabel("Lead time (days)")
+        else:
+            # Hide y-ticks and labels on all but the leftmost
+            ax.yaxis.set_ticks_position('none')
+            ax.yaxis.set_ticklabels([])
+            ax.set_ylabel("")
+
         ax.set_title(lab)
 
-        # place bars on the LOWER edge of the day cell (index - 0.5)
         for c in range(L_i):
             ycross = first_crossing_yindex(A[:, c], thr=threshold)
             if np.isnan(ycross):
                 continue
             y_low_edge = np.floor(ycross) - 0.5
-            # clip to image bounds [-0.5, T_i - 0.5]
             y_low_edge = max(-0.5, min(T_i - 0.5, y_low_edge))
             if ycross > 0:
                 y_low_edge += 1
             ax.hlines(y_low_edge, c - bar_half_width, c + bar_half_width, colors="k", linewidth=1.3)
 
-        # legend (top-right, boxed) on every subplot
         bar_proxy = Line2D([0], [0], color="k", lw=1.3, label=f"{threshold} skill threshold")
-        ax.legend(handles=[bar_proxy], loc="lower right", frameon=True, fancybox=True, framealpha=0.95)
+        # Legend only for rightmost axis
+        # For case with fuxi: the rightmost model_axis is max(model_axes); otherwise, it's N-1
+        show_legend = (i == (model_axes[-1]))
+        if show_legend:
+            ax.legend(handles=[bar_proxy], loc="upper right", frameon=True, fancybox=True, framealpha=0.95)
 
-        # tighten to exact image edges so ticks at -0.5 and T_i-0.5 align with borders
         ax.set_xlim(-0.5, L_i - 0.5)
         ax.set_ylim(-0.5, T_i - 0.5)
 
-    # shared colorbar
+    # Optional fuxi panel: Draw in the middle
+    if has_fuxi:
+        ax = axes[fuxi_axis]
+        T_i = fuxi_correlations.shape[0]
+        fuxi_arr = fuxi_correlations
+        fuxi_A = fuxi_arr.reshape(-1, 1)
+        im = ax.imshow(
+            fuxi_A, origin="lower", aspect="auto", cmap=cmap, norm=norm
+        )
+        last_im = im
+
+        ax.set_xticks([])
+        ax.set_xticklabels([])
+
+        ax.set_yticks([])
+        ax.set_yticklabels([])
+        ax.set_ylabel("")
+
+        ax.set_title("FuXi")
+        ax.set_xlabel("")
+
+        ycross = first_crossing_yindex(fuxi_A[:, 0], thr=threshold)
+        if not np.isnan(ycross):
+            y_low_edge = np.floor(ycross) - 0.5
+            y_low_edge = max(-0.5, min(T_i - 0.5, y_low_edge))
+            if ycross > 0:
+                y_low_edge += 1
+            ax.hlines(y_low_edge, -bar_half_width, bar_half_width, colors="k", linewidth=1.3)
+
+        ax.set_xlim(-0.5, 0.5)
+        ax.set_ylim(-0.5, T_i - 0.5)
+
     if last_im is not None:
         cbar = fig.colorbar(last_im, ax=axes, shrink=0.9, pad=0.02, boundaries=bounds, ticks=bounds, spacing="proportional")
         cbar.set_label("Bivariate correlation")
-        cbar.ax.invert_yaxis()  # show 1 at bottom, 0 at top (colors unchanged)
-
+        cbar.ax.invert_yaxis()
 
     if output_filename:
         fig.savefig(output_filename, dpi=300, bbox_inches="tight")
 
-    return fig, axes
+    return fig, list(axes)
 
 def hexbin_skill_vs_amplitude_plot(
     data: np.ndarray,                 # shape (T, N, 2) -> [:, :, 0]=amplitude, [:, :, 1]=skill
