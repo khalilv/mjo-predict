@@ -179,27 +179,29 @@ def save_like(output, input, member, lead_time, save_dir=""):
 
 
 
-def load_model(model_name, device):
+def load_model(model_path: str, device: str = "cpu"):
     ort.set_default_logger_severity(3)
-    options = ort.SessionOptions()
-    options.enable_cpu_mem_arena=False
-    options.enable_mem_pattern = False
-    options.enable_mem_reuse = False
-    
-    if device == "cuda":
-        providers = [('CUDAExecutionProvider', {'arena_extend_strategy':'kSameAsRequested'})]
-    elif device == "cpu":
-        providers=['CPUExecutionProvider']
-        options.intra_op_num_threads = 24
+
+    so = ort.SessionOptions()
+    so.enable_cpu_mem_arena = False
+    so.enable_mem_pattern = False
+    so.enable_mem_reuse = False
+    so.intra_op_num_threads = 4   # tune (2–8 usually fine on shared nodes)
+    so.inter_op_num_threads = 1
+    so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+    if device.lower() == "cuda":
+        providers = [
+            ("CUDAExecutionProvider", {"arena_extend_strategy":"kSameAsRequested"}),
+            "CPUExecutionProvider",
+        ]
+    elif device.lower() == "cpu":
+        providers = ["CPUExecutionProvider"]
     else:
         raise ValueError("device must be cpu or cuda!")
 
-    session = ort.InferenceSession(
-        model_name,  
-        sess_options=options, 
-        providers=providers
-    )
-    return session
+    sess = ort.InferenceSession(model_path, sess_options=so, providers=providers)
+    return sess
 
 
 def run_inference(
@@ -299,9 +301,9 @@ def main():
     model = "/glade/derecho/scratch/kvirji/mjo-predict/pretrained_weights/model-1.0/fuxi_s2s.onnx"
     device = "cuda"
     batch_size = 1
-    total_steps = 60
+    total_steps = 215
     total_members = 51
-    save_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/"
+    save_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/generated/"
 
     wb2_ds = slice_to(wb2_ds, start_date, end_date)
     olr_ds = slice_to(olr_ds, start_date, end_date)
