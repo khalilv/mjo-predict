@@ -75,6 +75,7 @@ def main():
         '/glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/720d_hist/logs/version_1/outputs',
     ]
     ground_truth_path = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt"
+    fuxi_path = '/glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi'
     output_dir = f'/glade/derecho/scratch/kvirji/mjo-predict/plots/production/2019-2021/history-only'
     os.makedirs(output_dir, exist_ok=True)
 
@@ -92,13 +93,18 @@ def main():
         correlations.append(bcorr)        
         max_lead_times.append(max_lt)
         event_correlations.append(bcorr_events)
-      
+    
+    fuxi_ds, fuxi_max_lt, _ = load_forecast(fuxi_path, start_date, end_date, member='mean')
+    bcorr_fuxi = compute_metric_across_leads(fuxi_ds, fuxi_max_lt, ground_truth, compute_bcorr)
+    bcorr_fuxi_events = compute_metric_across_leads(fuxi_ds, fuxi_max_lt, ground_truth, compute_bcorr, filter_low_amp_init=True)
+
     bivariate_correlation_vs_lead_time_heatmap(
         lead_times=np.expand_dims(np.arange(1,43), 0).repeat(2, axis=0),
         lookbacks=np.expand_dims(np.array([0,1,10,90,180,360,720]), 0).repeat(2, axis=0), 
         correlations=np.array(correlations).reshape(2, 7, 42),
         labels=['TFT', 'TSMixer'], 
-        output_filename=os.path.join(output_dir, 'bcorr_heatmap.png')
+        output_filename=os.path.join(output_dir, 'bcorr_heatmap.png'),
+        # fuxi_correlations=bcorr_fuxi
     )
 
     bivariate_correlation_vs_lead_time_heatmap(
@@ -106,7 +112,8 @@ def main():
         lookbacks=np.expand_dims(np.array([0,1,10,90,180,360,720]), 0).repeat(2, axis=0), 
         correlations=np.array(event_correlations).reshape(2, 7, 42),
         labels=['TFT', 'TSMixer'], 
-        output_filename=os.path.join(output_dir, 'bcorr_low_amp_events_heatmap.png')
+        output_filename=os.path.join(output_dir, 'bcorr_high_amp_events_heatmap.png'),
+        # fuxi_correlations=bcorr_fuxi_events
     )
 
 if __name__ == "__main__":
