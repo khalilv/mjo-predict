@@ -1,0 +1,56 @@
+# Date range for analysis
+dates:
+  start: '2019-01-01'
+  end: '2022-01-01'
+
+# File paths
+paths:
+  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/BoM/rmm.74toRealtime.txt
+  fuxi: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi
+  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/2019-2021/BoM
+
+# Forecast directories
+forecast_dirs:
+  - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/BoM/baselines/four_groups/mean_bias
+  - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/BoM/baselines/four_groups/MLR_with_doy
+  - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/BoM/bias-correction/LSTM/combined
+
+# Labels for each forecast (include Fuxi)
+plot_labels:
+  - 'Mean bias correction'
+  - 'MVLR'
+  - 'LSTM'
+  - 'FuXi-S2S'
+
+# Whether to print relative improvement tables
+print_tables: true
+
+# Plot settings
+plot_settings:
+  # Font sizes and styles
+  fonts:
+    title: 14
+    axis_label: 12
+    tick_label: 11
+    legend: 11
+    title_weight: normal
+    title_label_weight: bold  # Only bold subplot labels like (a), (b)
+    # family: sans-serif
+
+  # Plot titles (set to null or omit to hide title)
+  titles:
+    bcor: '(a) BCOR'
+    bmse: '(b) BMSE'
+    low_amp_bcor: '(a) BCOR - Low Amplitude Forecasts'
+    low_amp_bmse: '(b) BMSE - Low Amplitude Forecasts'
+    high_amp_bcor: '(c) BCOR - High Amplitude Forecasts'
+    high_amp_bmse: '(d) BMSE - High Amplitude Forecasts'
+  
+  # Colormap settings
+  colormap:
+    name: "cividis"
+
+  # Y-axis label visibility
+  y_labels:
+    hide_bcor: true
+    hide_bmse: true

@@ -1,0 +1,60 @@
+# Date range for analysis
+dates:
+  start: '2002-01-01'
+  end: '2018-01-01'
+
+# File paths
+paths:
+  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
+  fuxi: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi
+  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/2002-2017
+
+# Forecast directories
+forecast_dirs: []
+  # - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/baselines/four_groups/mean_bias
+  # - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/baselines/four_groups/MLR_with_doy
+  # - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/bias-correction/LSTM/combined
+
+# Labels for each forecast
+plot_labels:
+  - 'Mean bias correction'
+  - 'MVLR'
+  - 'LSTM'
+
+# Plot settings
+plot_settings:
+  # Font sizes and styles
+  fonts:
+    title: 14
+    axis_label: 12
+    tick_label: 11
+    colorbar_label: 12
+    title_weight: normal
+    title_label_weight: bold  # Only bold subplot labels like (a), (b)
+    # family: sans-serif
+
+  # Plot title template (use {model} placeholder for model name)
+  titles:
+    template: '{model} - Seasonality'
+
+  # Axis labels
+  labels:
+    x_label: 'Month'
+    y_label: 'Lead time (days)'
+    colorbar_label: 'BCOR'
+
+  # Colormap settings
+  colormap:
+    name: "YlGnBu"
+    threshold: 0.5
+    # Contour levels - can be list or dict with start/stop/num
+    levels:
+      start: 0.1
+      stop: 1.0
+      num: 10
+
+  # Label visibility
+  y_labels:
+    hide_x: false
+    hide_y: false
+    hide_colorbar: false

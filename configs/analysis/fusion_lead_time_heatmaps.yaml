@@ -1,0 +1,68 @@
+# Date range for analysis
+dates:
+  start: "2019-01-01"
+  end: "2022-01-01"
+
+# File paths
+paths:
+  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
+  fuxi: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi
+  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/2019-2021/fusion
+
+# Model and lookback window names
+model_names: [(a) TFT, (c) TSMixer]
+lookback_names: [0, 1, 10, 90, 180, 360, 720]
+
+# Forecast directories
+# Organized as nested list: [model][lookback]
+forecast_dirs:
+  - - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TFT/0d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TFT/1d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TFT/10d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TFT/90d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TFT/180d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TFT/360d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TFT/720d_hist/logs/version_0/outputs
+  - - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TSMixer/0d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TSMixer/1d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TSMixer/10d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TSMixer/90d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TSMixer/180d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TSMixer/360d_hist/logs/version_0/outputs
+    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/fusion/TSMixer/720d_hist/logs/version_0/outputs
+
+# Whether to include FuXi as middle panel in heatmap
+include_fuxi: true
+
+# Plot settings
+plot_settings:
+  # Font sizes and styles
+  fonts:
+    title: 14
+    axis_label: 12
+    tick_label: 11
+    legend: 11
+    colorbar_label: 12
+    title_weight: normal
+    title_label_weight: bold  # Only bold subplot labels like (a), (b)
+    # family: sans-serif
+
+  # Text labels
+  labels:
+    x_label: "Lookback window (days)"
+    y_label: "Lead time (days)"
+    colorbar_label: "BCOR"
+    legend_label: "{threshold} skill threshold"
+    zero_symbol: "$\\varnothing$"
+    fuxi_label: "(b) FuXi-S2S"
+
+  # Colormap settings
+  colormap:
+    name: "YlGnBu"
+    bounds: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
+  # Skill threshold
+  threshold: 0.5
+
+  # Legend position (matplotlib location strings: upper/lower/center left/right/center)
+  legend_position: "lower right"

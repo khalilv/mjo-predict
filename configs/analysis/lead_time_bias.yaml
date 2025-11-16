@@ -1,0 +1,58 @@
+# Date range for analysis
+dates:
+  start: '2019-01-01'
+  end: '2022-01-01'
+
+# File paths
+paths:
+  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
+  fuxi: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi
+  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/2019-2021/bias-correction
+
+# Forecast directories
+forecast_dirs:
+  - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/baselines/four_groups/mean_bias
+  - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/baselines/four_groups/MLR_with_doy
+  - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/bias-correction/LSTM/combined
+
+# Labels for each forecast (include Fuxi)
+plot_labels:
+  - 'Mean bias correction'
+  - 'MVLR'
+  - 'LSTM'
+  - 'FuXi-S2S'
+
+# Plot settings
+plot_settings:
+  # Font sizes and styles
+  fonts:
+    title: 14
+    axis_label: 12
+    tick_label: 11
+    legend: 11
+    title_weight: normal
+    title_label_weight: bold  # Only bold subplot labels like (a), (b)
+    # family: sans-serif
+
+  # Plot titles for 1x2 plot
+  titles:
+    amplitude: '(a) Amplitude Bias'
+    phase: '(b) Phase Bias'
+    low_amp_amplitude: '(a) Amplitude Bias - Low Amplitude Forecasts'
+    low_amp_phase: '(b) Phase Bias - Low Amplitude Forecasts'
+    high_amp_amplitude: '(c) Amplitude Bias - High Amplitude Forecasts'
+    high_amp_phase: '(d) Phase Bias - High Amplitude Forecasts'
+
+  # Colormap settings
+  colormap:
+    name: "cividis"
+
+  # Y-axis limits
+  ylim:
+    amplitude: [-1, 0.5]
+    phase: [-1, 0.5]
+
+  # Y-axis label visibility
+  y_labels:
+    hide_amplitude: true
+    hide_phase: true

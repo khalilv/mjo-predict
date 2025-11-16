@@ -1,0 +1,73 @@
+# Date range for analysis
+dates:
+  start: '2002-01-01'
+  end: '2018-01-01'
+
+# Trajectory settings
+trajectory:
+  length: 42
+  smoothing_window: 1  # 1 for no smoothing, >1 for smoothing
+  offset: 0  # Number of days to skip at beginning of trajectory
+
+# File paths
+paths:
+  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
+  # bom: /glade/derecho/scratch/kvirji/DATA/MJO/BoM/rmm.74toRealtime.txt
+  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/2002-2017/phase_space
+  output_filename: 'phase_space_composite.png'
+
+# Forecast directories
+forecast_dirs: []
+  # - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/bias-correction/LSTM/combined
+
+# Labels for each forecast
+forecast_labels: []
+  # - LSTM
+
+# Ensemble directories (each with path, label, and members)
+ensemble_dirs:
+  - path: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi/
+    label: FuXi-S2S
+    members:
+      - mean
+      # - '00'
+      # - '05'
+      # - '10'
+
+# Ground truth label
+gt_label: 'Observed'
+
+# Plot settings
+plot_settings:
+  # Figure size
+  figsize: [8, 8]
+
+  # Font sizes and styles
+  fonts:
+    title: 14
+    axis_label: 12
+    region_label: 12
+    phase_label: 12
+    legend: 11
+    title_weight: normal
+    title_label_weight: bold  # Only bold subplot labels like (a), (b)
+    # family: sans-serif
+
+  # Plot title template (use {trajectory_length}, {offset}, {start_date}, {end_date} placeholders)
+  title:
+    template: '{trajectory_length}-day RMM Composite'
+
+  # Axis settings (composite plots typically have smaller limits)
+  axis:
+    xlim: [-1.75, 1.75]
+    ylim: [-1.75, 1.75]
+
+  # Colormap settings
+  colormap:
+    name: "tab10"
+
+  # Trajectory marker settings
+  marker_interval: 5
+
+  # Legend location
+  legend_loc: 'best'
