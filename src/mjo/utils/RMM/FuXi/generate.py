@@ -28,6 +28,7 @@ FUXI_VARIABLES = [
 ]
 
 def load_wb2_data(path):
+    """Load WeatherBench2 zarr data and rename dimensions to lat/lon."""
     ds = xr.open_zarr(path)
     available_vars = [long for long,_ in FUXI_VARIABLES if long in ds.variables]
     ds = ds[available_vars]
@@ -38,6 +39,7 @@ def load_wb2_data(path):
     return ds
 
 def load_cds_data(path):
+    """Load CDS NetCDF files and standardize dimension names."""
     ds = xr.open_mfdataset(glob.glob(os.path.join(path, "*.nc")), combine='by_coords', engine='netcdf4')
     if 'latitude' in ds.dims:
         ds = ds.rename({'latitude': 'lat'})
@@ -49,43 +51,48 @@ def load_cds_data(path):
     return ds
 
 def load_olr_data(path):
-    ds = xr.open_dataset(path).isel(time=slice(249, None)) # remove some corrupted dates   
+    """Load OLR data and remove corrupted initial dates."""
+    ds = xr.open_dataset(path).isel(time=slice(249, None))  # Remove corrupted dates
     return ds
 
 def regrid_to(ds, lat, lon):
+    """Regrid dataset to target lat/lon grid using bilinear interpolation."""
     olr_regridder = xe.Regridder(ds, {'lat': lat, 'lon': lon}, 'bilinear', periodic=True)
     ds = olr_regridder(ds)
     return ds
 
 def slice_to(ds, start_date, end_date):
+    """Slice dataset to specified time period."""
     period = slice(start_date, end_date)
     ds = ds.sel(time=period)
     return ds
 
 def format(ds):
+    """Convert dataset variables into FuXi model input format with channel dimension."""
     formatted_ds = []
     channel = []
     for (long, short) in FUXI_VARIABLES:
         v = ds[long]
+        # Add level dimension if missing
         if 'level' not in v.dims:
             v = v.expand_dims({'level': [1]})
 
+        # Scale precipitation to mm and clip
         if short == "tp":
             v = np.clip(v * 1000, 0, 1000)
 
-        # elif short == "ttr":
-        #     v = v / 3600
-
+        # Reverse level ordering if needed (1000 hPa should be first)
         if v.level.values[0] != 1000:
             v = v.reindex(level=v.level[::-1])
 
+        # Create channel names (e.g., 'z500', 'z850', 'u200', etc.)
         if short in ['z', 't', 'u', 'v', 'q']:
             level = [f'{short}{l}' for l in v.level.values]
         else:
             level = [short]
 
         v.name = "data"
-        v.attrs = {}        
+        v.attrs = {}
         v = v.assign_coords(level=level)
         formatted_ds.append(v)
         channel += level
@@ -95,6 +102,7 @@ def format(ds):
     return formatted_ds
 
 def clean(ds):
+    """Remove timesteps with missing data (except SST) and their previous day."""
     null_times = None
     for var in ds.data_vars:
         if var == 'sea_surface_temperature': continue
@@ -117,17 +125,18 @@ def clean(ds):
     return ds
 
 def print_dataarray(ds, msg='', n=10):
+    """Print diagnostic information about DataArray shape, values, and coordinates."""
     tid = np.arange(0, ds.shape[0])
-    tid = np.append(tid[:n], tid[-n:])    
+    tid = np.append(tid[:n], tid[-n:])
     v = ds.isel(time=tid)
     msg += f"short_name: {ds.name}, shape: {ds.shape}, value: {v.values.min():.3f} ~ {v.values.max():.3f}"
-    
+
     if 'lat' in ds.dims:
         lat = ds.lat.values
         msg += f", lat: {lat[0]:.3f} ~ {lat[-1]:.3f}"
     if 'lon' in ds.dims:
         lon = ds.lon.values
-        msg += f", lon: {lon[0]:.3f} ~ {lon[-1]:.3f}"   
+        msg += f", lon: {lon[0]:.3f} ~ {lon[-1]:.3f}"
 
     if "level" in v.dims and len(v.level) > 1:
         for lvl in v.level.values:
@@ -142,6 +151,7 @@ def print_dataarray(ds, msg='', n=10):
     print(msg)
 
 def save_with_progress(ds, save_name, dtype=np.float32):
+    """Save dataset to NetCDF with progress bar."""
     from dask.diagnostics import ProgressBar
 
     if 'time' in ds.dims:
@@ -155,7 +165,7 @@ def save_with_progress(ds, save_name, dtype=np.float32):
 
 
 def save_like(output, input, member, lead_time, save_dir=""):
-
+    """Save forecast output with proper coordinates and dimensions."""
     if save_dir:
         save_dir = os.path.join(save_dir, f"member/{member:02d}")
         os.makedirs(save_dir, exist_ok=True)
@@ -172,21 +182,20 @@ def save_like(output, input, member, lead_time, save_dir=""):
                 lon=input.lon,
             )
         ).astype(np.float32)
-        ds = ds.sel(channel=['u250', 'u200', 'u850', 'ttr'])
-        # print_dataarray(ds)
         save_name = os.path.join(save_dir, f'{lead_time:02d}.nc')
         ds.to_netcdf(save_name)
 
 
 
 def load_model(model_path: str, device: str = "cpu"):
+    """Load FuXi ONNX model with optimized session options."""
     ort.set_default_logger_severity(3)
 
     so = ort.SessionOptions()
     so.enable_cpu_mem_arena = False
     so.enable_mem_pattern = False
     so.enable_mem_reuse = False
-    so.intra_op_num_threads = 4   # tune (2–8 usually fine on shared nodes)
+    so.intra_op_num_threads = 4  # Tune for shared nodes (2-8 typically)
     so.inter_op_num_threads = 1
     so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 
@@ -205,24 +214,22 @@ def load_model(model_path: str, device: str = "cpu"):
 
 
 def run_inference(
-    model, 
-    input, 
-    total_step, 
-    total_member, 
+    model,
+    input,
+    total_step,
+    total_member,
     time_strs,
     save_dir=""
 ):
+    """Run FuXi S2S inference for multiple ensemble members and lead times."""
     input_names = [input.name for input in model.get_inputs()]
-    # hist_time = pd.to_datetime(input.time.values[-2])
-    # init_time = pd.to_datetime(input.time.values[-1])
-    # assert init_time - hist_time == pd.Timedelta(days=1)
-    
-    lat = input.lat.values 
-    lon = input.lon.values 
+
+    lat = input.lat.values
+    lon = input.lon.values
     batch = input.values
     if batch.shape[3] > batch.shape[4]:
-        batch = batch.swapaxes(3,4) #(B, T, V, H, W)
-    
+        batch = batch.swapaxes(3,4)  # (B, T, V, H, W)
+
     assert lat[0] == 90 and lat[-1] == -90
     print(f"Region: {lat[0]:.2f} ~ {lat[-1]:.2f}, {lon[0]:.2f} ~ {lon[-1]:.2f}")
 
@@ -231,18 +238,14 @@ def run_inference(
         new_input = deepcopy(batch)
 
         start = time.perf_counter()
+        # Autoregressive forecast loop
         for step in range(total_step):
             lead_time = (step + 1)
 
-            inputs = {'input': new_input}        
+            inputs = {'input': new_input}
 
             if "step" in input_names:
                 inputs['step'] = np.array([step], dtype=np.float32)
-
-            # if "doy" in input_names:
-            #     valid_time = init_time + pd.Timedelta(days=step)
-            #     doy = min(365, valid_time.day_of_year)/365 
-            #     inputs['doy'] = np.array([doy], dtype=np.float32)
 
             istart = time.perf_counter()
             new_input, = model.run(None, inputs)
@@ -254,7 +257,7 @@ def run_inference(
                 save = os.path.join(save_dir, time_strs[b])
                 os.makedirs(save, exist_ok=True)
                 save_like(output[b:b+1], input, member, lead_time, save)
-            
+
             if step > total_step:
                 break
 
@@ -262,6 +265,7 @@ def run_inference(
         print(f'Inference member done, take {run_time:.2f} sec')
 
 def batch_input(input, batch_size):
+    """Generate batches of consecutive time pairs from input data, filtering for 1st of month."""
     batch = []
     init_time_strs = []
     time_values = input.time.values
@@ -269,35 +273,34 @@ def batch_input(input, batch_size):
     for i in range(1, len(time_values)):
         t0 = pd.to_datetime(time_values[i - 1])
         t1 = pd.to_datetime(time_values[i])
+        # Only include consecutive days
         if t1 - t0 != pd.Timedelta(days=1):
             continue
 
-        # Slice two time steps
+        # Only initialize forecasts on 1st of month
+        if t1.day != 1:
+            continue
+
+        # Extract two-timestep input (t-1, t)
         sample = input.isel(time=slice(i - 1, i + 1))  # shape (2, C, H, W)
         batch.append(sample)
         init_time_strs.append("".join(str(t1.date()).split('-')))
 
-        # once batch_size is reached, yield the batch
+        # Yield batch when full
         if len(batch) == batch_size:
-            # stack into one batch
             yield xr.concat(batch, dim='batch'), init_time_strs
             batch = []
             init_time_strs = []
 
-    # yield remaining batch if any
+    # Yield remaining partial batch
     if batch:
         yield xr.concat(batch, dim='batch'), init_time_strs
 
 
 def main():
-    start_date = '1990-01-01'
-    end_date = '1990-12-31'
-    wb2_ds = load_wb2_data('/glade/derecho/scratch/kvirji/DATA/era5_daily/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr')
-    olr_ds = load_olr_data('/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc')
-    u100_ds = load_cds_data('/glade/derecho/scratch/kvirji/DATA/100u')
-    v100_ds = load_cds_data('/glade/derecho/scratch/kvirji/DATA/100v')
-    # mask = xr.open_dataarray("/glade/derecho/scratch/kvirji/FuXi-S2S/data/mask.nc")
-
+    """Generate FuXi S2S ensemble forecasts from ERA5 and OLR initial conditions."""
+    start_date = '2022-12-31'
+    end_date = '2023-12-31'
     model = "/glade/derecho/scratch/kvirji/mjo-predict/pretrained_weights/model-1.0/fuxi_s2s.onnx"
     device = "cuda"
     batch_size = 1
@@ -305,36 +308,48 @@ def main():
     total_members = 51
     save_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/generated/"
 
+    # Load input datasets
+    wb2_ds = load_wb2_data('/glade/derecho/scratch/kvirji/DATA/era5_daily/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr')
+    olr_ds = load_olr_data('/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc')
+    u100_ds = load_cds_data('/glade/derecho/scratch/kvirji/DATA/100u')
+    v100_ds = load_cds_data('/glade/derecho/scratch/kvirji/DATA/100v')
+
+    # Slice to target time period
     wb2_ds = slice_to(wb2_ds, start_date, end_date)
     olr_ds = slice_to(olr_ds, start_date, end_date)
     u100_ds = slice_to(u100_ds, start_date, end_date)
     v100_ds = slice_to(v100_ds, start_date, end_date)
 
+    # Regrid to common grid
     olr_ds = regrid_to(olr_ds, wb2_ds.lat, wb2_ds.lon)
     u100_ds = regrid_to(u100_ds, wb2_ds.lat, wb2_ds.lon)
     v100_ds = regrid_to(v100_ds, wb2_ds.lat, wb2_ds.lon)
 
+    # Combine datasets (convert OLR to TTR by negation)
     wb2_ds['top_net_thermal_radiation'] = -olr_ds['olr']
     wb2_ds['100m_u_component_of_wind'] = u100_ds['u100']
     wb2_ds['100m_v_component_of_wind'] = v100_ds['v100']
-    
+
+    # Clean and format for FuXi model
     ds = clean(wb2_ds)
     input = format(ds)
-    input = input.sel(lat=input.lat[::-1])
+    input = input.sel(lat=input.lat[::-1])  # Reverse latitude (N to S)
 
     print_dataarray(input)
 
+    # Load FuXi S2S model
     start = time.perf_counter()
     model = load_model(model, device)
     print(f'FuXi took {time.perf_counter() - start:.2f} sec to load.')
 
+    # Run inference in batches
     for batch, time_strs in batch_input(input, batch_size=batch_size):
         print('Processing: ', time_strs)
         run_inference(
-            model, 
-            batch, 
-            total_steps, 
-            total_members,  
+            model,
+            batch,
+            total_steps,
+            total_members,
             time_strs,
             save_dir=save_dir
         )

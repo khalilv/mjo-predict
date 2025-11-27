@@ -4,7 +4,7 @@ from tqdm import tqdm
 from mjo.utils.RMM.io import load_rmm_indices
 
 def main():
-        
+    """Load FuXi RMM indices, add phase and day-of-year features, and save to .npz format."""
     forecast_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi"
     output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed/FuXi"
 
@@ -12,16 +12,24 @@ def main():
 
     for start_date in sorted(os.listdir(forecast_dir)):
         root = os.path.join(forecast_dir, start_date)
+
+        # Initialize lists for ensemble members and mean
         RMM1, RMM2, phase, amplitude, phase_sin, phase_cos, doy_sin, doy_cos, year, dates = [], [], [], [], [], [], [], [], [], []
         RMM1_mean, RMM2_mean, phase_mean, amplitude_mean, phase_sin_mean, phase_cos_mean, doy_sin_mean, doy_cos_mean, year_mean, dates_mean = [], [], [], [], [], [], [], [], [], []
+
         members = sorted(os.listdir(root))
         if len(members) < 52: print(f'Warning: only found {len(members)} members for {start_date}')
+
+        # Process each ensemble member
         for member in tqdm(members, f'Processing members for {start_date}'):
             member_df = load_rmm_indices(os.path.join(root, member))
+
+            # Compute phase angle features (sin/cos of arctan2(RMM2, RMM1))
             p = np.arctan2(member_df['RMM2'],member_df['RMM1'])
             member_df['phase_sin'] = np.sin(p)
             member_df['phase_cos'] = np.cos(p)
-    
+
+            # Compute day-of-year angle features (sin/cos encoding)
             doy = member_df.index.day_of_year
             angle = 2 * np.pi * doy / 366
             member_df['doy_sin'] = np.sin(angle)
@@ -29,6 +37,7 @@ def main():
 
             member_df['year'] = member_df.index.year
 
+            # Separate ensemble mean from individual members
             if member == 'mean.txt':
                 RMM1_mean.append(member_df['RMM1'].values)
                 RMM2_mean.append(member_df['RMM2'].values)
@@ -51,7 +60,8 @@ def main():
                 doy_cos.append(member_df['doy_cos'].values)
                 year.append(member_df['year'].values)
                 dates.append(member_df.index.values)
-        
+
+        # Validate all ensemble members have matching dates
         assert np.all(dates == dates[0]), f'Found non-matching dates within ensemble members in {root}'
         np.savez(os.path.join(output_dir, f'{start_date}_members.npz'),
             RMM1=np.array(RMM1),
@@ -65,6 +75,7 @@ def main():
             year=np.array(year),
             dates=np.array(dates[0]))
 
+        # Validate ensemble mean has matching dates and save
         assert np.all(dates[0] == dates_mean[0]), f'Found non-matching dates within ensemble mean in {root}'
         np.savez(os.path.join(output_dir, f'{start_date}_mean.npz'),
             RMM1=np.array(RMM1_mean),
