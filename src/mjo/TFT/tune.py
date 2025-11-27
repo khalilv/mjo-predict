@@ -11,9 +11,16 @@ from pytorch_lightning.cli import LightningCLI
 from optuna_integration import PyTorchLightningPruningCallback
 
 def objective(trial):
-    
-    # hyperparameters to optimize
-    hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 10)
+    """Optuna objective function for hyperparameter optimization.
+
+    Args:
+        trial: Optuna trial object for suggesting hyperparameters
+
+    Returns:
+        Validation MSE for the trial
+    """
+    # Suggest hyperparameters to optimize
+    hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 10)  # 32 to 1024
     # lstm_layers = trial.suggest_int('lstm_layers', 1, 4)
     # num_attention_heads = trial.suggest_int('num_attention_heads', 2, 16, step=2)
     # hidden_continuous_size = 2 ** trial.suggest_int('hidden_continuous_exp', 5, 10)
@@ -25,7 +32,7 @@ def objective(trial):
     # beta_2 = trial.suggest_float("beta_2", 0.95, 0.999, step=0.01)
     # weight_decay = trial.suggest_float("weight_decay", 1e-7, 1e-2, log=True)
 
-    # Set up CLI (without running)
+    # Initialize Lightning with the model and data modules
     cli = LightningCLI(
         model_class=MJOForecastModule,
         datamodule_class=MJOForecastDataModule,
@@ -35,10 +42,10 @@ def objective(trial):
         parser_kwargs={"parser_mode": "omegaconf", "error_handler": None},
     )
 
-    # ensure root dir exists
     root_dir = cli.trainer.default_root_dir
     os.makedirs(root_dir, exist_ok=True)
 
+    # Configure model with suggested hyperparameters
     cli.model.set_input_length(len(cli.datamodule.get_history()) + 1)
     cli.model.set_output_length(len(cli.datamodule.get_predictions()))
     cli.model.set_in_variables(cli.datamodule.get_in_variables())
@@ -62,28 +69,40 @@ def objective(trial):
     # cli.model.weight_decay = weight_decay
     cli.model.init_network()
 
-    # pruning callback
+    # Add pruning callback to stop unpromising trials early
     pruning_callback = PyTorchLightningPruningCallback(trial, monitor='val/mse')
     cli.trainer.callbacks.append(pruning_callback)
 
-    # train
+    # Train and return validation metric
     cli.trainer.fit(cli.model, datamodule=cli.datamodule)
 
     return cli.trainer.callback_metrics['val/mse'].item()
 
 def run_optimization(n_trials, root_dir):
+    """Run Optuna hyperparameter optimization study.
+
+    Args:
+        n_trials: Number of optimization trials to run
+        root_dir: Directory to save optimization database
+
+    Returns:
+        Tuple of (study, db_path) where study is the Optuna study object
+        and db_path is the path to the SQLite database
+    """
+    # Configure pruner to stop unpromising trials early
     pruner = optuna.pruners.MedianPruner(
         n_startup_trials=10,
         n_warmup_steps=20,
         n_min_trials=20
     )
+    # Configure TPE sampler for efficient hyperparameter search
     sampler = optuna.samplers.TPESampler(
         multivariate=True,
         group=True,
         seed=42
     )
 
-    # Path to DB file inside root_dir
+    # Create SQLite database for storing trial results
     db_path = os.path.join(root_dir, "tft_optuna.db")
     storage = f"sqlite:///{db_path}"
 
@@ -100,7 +119,13 @@ def run_optimization(n_trials, root_dir):
     return study, db_path
 
 def main():
-    # Create CLI once to access root_dir before optuna runs
+    """Run hyperparameter tuning for TFT model using Optuna.
+
+    Performs N trials of hyperparameter optimization using TPE sampling
+    and median pruning. Best trial parameters are saved to best_trial.yaml.
+
+    """
+    # Create CLI to access configuration
     cli = LightningCLI(
         model_class=MJOForecastModule,
         datamodule_class=MJOForecastDataModule,
@@ -113,10 +138,10 @@ def main():
     root_dir = cli.trainer.default_root_dir
     os.makedirs(root_dir, exist_ok=True)
 
-    # Run optimization
+    # Run optimization study
     study, _ = run_optimization(n_trials=50, root_dir=root_dir)
 
-    # Save best trial params to YAML in root_dir
+    # Print and save best trial results
     trial = study.best_trial
     print("Best trial:")
     print(f"  Loss: {trial.value}")

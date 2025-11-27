@@ -7,10 +7,14 @@ from mjo.utils.datamodule import MJOForecastDataModule
 from mjo.TFT.module import MJOForecastModule
 from pytorch_lightning.cli import LightningCLI
 
-# 1) entry point high-level class for training TSMixer
-
 def main():
-    # Initialize Lightning with the model and data modules, and instruct it to parse the config yml
+    """Train TFT (Temporal Fusion Transformer) model for MJO forecasting.
+
+    Configures and trains a TFT model with encoder-decoder architecture using PyTorch Lightning.
+    Configuration is loaded from a YAML file specified via command line.
+    
+    """
+    # Initialize Lightning with the model and data modules
     cli = LightningCLI(
         model_class=MJOForecastModule,
         datamodule_class=MJOForecastDataModule,
@@ -21,6 +25,7 @@ def main():
     )
     os.makedirs(cli.trainer.default_root_dir, exist_ok=True)
 
+    # Configure model based on datamodule settings
     cli.model.set_input_length(len(cli.datamodule.get_history()) + 1)
     cli.model.set_output_length(len(cli.datamodule.get_predictions()))
     cli.model.set_in_variables(cli.datamodule.get_in_variables())
@@ -32,10 +37,10 @@ def main():
     cli.model.init_metrics()
     cli.model.init_network()
 
-    # fit() runs the training
+    # Train the model
     cli.trainer.fit(cli.model, datamodule=cli.datamodule)
 
-    # test the trained model
+    # Evaluate on test set using best checkpoint
     cli.trainer.test(cli.model, datamodule=cli.datamodule, ckpt_path='best')
 
 if __name__ == "__main__":

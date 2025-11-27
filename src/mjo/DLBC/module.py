@@ -64,6 +64,11 @@ class MJOForecastModule(LightningModule):
         self.save_hyperparameters(logger=False, ignore=["net"])      
 
     def load_pretrained_weights(self, pretrained_path):
+        """Load pretrained model weights from checkpoint.
+
+        Args:
+            pretrained_path: Path to checkpoint file (local path or URL)
+        """
         if pretrained_path.startswith("http"):
             checkpoint = torch.hub.load_state_dict_from_url(pretrained_path, map_location=torch.device("cpu"), weights_only=True)
         else:
@@ -75,52 +80,90 @@ class MJOForecastModule(LightningModule):
         print(msg)
 
     def set_input_length(self, input_length: int):
+        """Set the number of forecast lead times.
+
+        Args:
+            input_length: Number of lead times to predict
+        """
         self.input_length = input_length
-    
+
     def set_input_dim(self, input_dim: int):
+        """Set the input feature dimension.
+
+        Args:
+            input_dim: Number of input features (variables + date encodings)
+        """
         self.input_dim = input_dim
-    
+
     def set_out_variables(self, out_variables: list):
+        """Set the output variable names.
+
+        Args:
+            out_variables: List of output variable names
+        """
         self.out_variables = out_variables
 
     def set_denormalization(self, denormalization):
+        """Set the denormalization transform for outputs.
+
+        Args:
+            denormalization: Transform object with denormalize() method
+        """
         self.denormalization = denormalization
 
     def init_metrics(self):
+        """Initialize train, validation, and test metrics.
+
+        Creates MSE and MAE metrics for each split. Train metrics use normalized data,
+        while val/test metrics use denormalized data for interpretability.
+        """
         denormalize = self.denormalization.denormalize if self.denormalization else None
 
         self.train_mse = MSE(vars=self.out_variables, transforms=None, suffix='norm')
         self.train_mae = MAE(vars=self.out_variables, transforms=None, suffix='norm')
         self.val_mse = MSE(vars=self.out_variables, transforms=denormalize, suffix=None)
-        self.val_mae = MAE(vars=self.out_variables, transforms=denormalize, suffix=None)        
+        self.val_mae = MAE(vars=self.out_variables, transforms=denormalize, suffix=None)
         self.test_mse = MSE(vars=self.out_variables, transforms=denormalize, suffix=None)
         self.test_mae = MAE(vars=self.out_variables, transforms=denormalize, suffix=None)
 
     def init_network(self):
-        # self.net = PerLeadTimeMLP(
-        #     input_dim=self.input_dim,
-        #     hidden_dim=self.hidden_size,
-        #     num_leads=self.input_length, 
-        #     depth=3
-        # )
+        """Initialize the forecast network architecture.
+
+        Creates a PerLeadTimeLSTM network and loads pretrained weights if specified.
+        """
         self.net = PerLeadTimeLSTM(
             input_dim=self.input_dim,
             hidden_dim=self.hidden_size,
-            num_leads=self.input_length, 
+            num_leads=self.input_length,
             output_dim=len(self.out_variables)
         )
         if hasattr(self, "pretrained_path") and self.pretrained_path and len(self.pretrained_path) > 0:
             self.load_pretrained_weights(self.pretrained_path)
-                
+
     def setup(self, stage: str):
+        """Setup hook called before training/validation/testing.
+
+        Args:
+            stage: Current stage (fit, validate, test, or predict)
+        """
         if self.denormalization:
             self.denormalization.to(device=self.device, dtype=self.dtype)
             
     def training_step(self, batch: Any, batch_idx: int):
+        """Execute single training step.
+
+        Args:
+            batch: Batch data from dataloader
+            batch_idx: Index of current batch
+
+        Returns:
+            Training loss (normalized MSE)
+        """
         in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
         target = out_data
 
+        # Use forecast data concatenated with date encodings as input
         x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
         x_in = torch.cat([x_in, out_date_encodings], dim=2)
         pred_data = self.net.forward(x=x_in) #(B, T, 2)
@@ -139,13 +182,20 @@ class MJOForecastModule(LightningModule):
         self.train_mse.reset()
         self.train_mae.reset()
         return batch_loss['mse_norm']
-    
-   
+
+
     def validation_step(self, batch: Any, batch_idx: int):
+        """Execute single validation step.
+
+        Args:
+            batch: Batch data from dataloader
+            batch_idx: Index of current batch
+        """
         in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
         target = out_data
 
+        # Use forecast data concatenated with date encodings as input
         x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
         x_in = torch.cat([x_in, out_date_encodings], dim=2)
         pred_data = self.net.forward(x=x_in)
@@ -153,12 +203,17 @@ class MJOForecastModule(LightningModule):
         self.val_mse.update(preds=pred_data, targets=target)
         self.val_mae.update(preds=pred_data, targets=target)
         return
-        
-        
+
+
     def on_validation_epoch_end(self):
+        """Compute and log validation metrics at epoch end.
+
+        Returns:
+            Dictionary of validation metrics
+        """
         val_mse = self.val_mse.compute()
         val_mae = self.val_mae.compute()
-               
+
         #scalar metrics
         loss_dict = {**val_mse, **val_mae}
         for key in loss_dict.keys():
@@ -173,25 +228,32 @@ class MJOForecastModule(LightningModule):
         return loss_dict
     
     def on_test_epoch_start(self):
+        """Create output directory if saving predictions."""
         if self.save_outputs:
             self.output_dir = f'{self.logger.log_dir}/outputs/'
             os.makedirs(self.output_dir, exist_ok=False)
 
     def test_step(self, batch: Any, batch_idx: int):
+        """Execute single test step.
+
+        Args:
+            batch: Batch data from dataloader
+            batch_idx: Index of current batch
+        """
         in_data, in_date_encodings, out_data, out_date_encodings, forecast_data, residual, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps = batch
 
         target = out_data
 
+        # Use forecast data concatenated with date encodings as input
         x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
         x_in = torch.cat([x_in, out_date_encodings], dim=2)
         pred_data = self.net.forward(x=x_in)
 
         self.test_mse.update(preds=pred_data, targets=target)
         self.test_mae.update(preds=pred_data, targets=target)
-              
+
+        # Save predictions to disk if enabled
         if self.save_outputs:
-            # if forecast_data is not None:
-            # pred_data = pred_data + out_data - residual #residual + forecast to recover prediction
             pred_data = self.denormalization.denormalize(pred_data)
             pred_data = pred_data.cpu().numpy()
             for b in range(pred_data.shape[0]):
@@ -204,11 +266,16 @@ class MJOForecastModule(LightningModule):
                     method_str='DLBC'
                 )
         return
-    
+
     def on_test_epoch_end(self):
+        """Compute and log test metrics at epoch end.
+
+        Returns:
+            Dictionary of test metrics
+        """
         test_mse = self.test_mse.compute()
         test_mae = self.test_mae.compute()
-               
+
         #scalar metrics
         loss_dict = {**test_mse, **test_mae}
         for key in loss_dict.keys():
@@ -222,8 +289,12 @@ class MJOForecastModule(LightningModule):
         self.test_mae.reset()
         return loss_dict
 
-    #optimizer definition - will be used to optimize the network
     def configure_optimizers(self):
+        """Configure optimizer and learning rate scheduler.
+
+        Returns:
+            Dictionary with optimizer and lr_scheduler configurations
+        """
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=self.lr,
