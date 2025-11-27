@@ -1,8 +1,10 @@
 import pandas as pd
 import numpy as np
 
-def save_rmm_indices(time, RMM1, RMM2, filename, method_str="WH04_method:_OLR_&_ERA5", MISSING_VAL=9.99999962e35):
 
+def save_rmm_indices(time, RMM1, RMM2, filename, method_str="WH04_method:_OLR_&_ERA5", MISSING_VAL=9.99999962e35):
+    """Save RMM indices to text file in standard format."""
+    # Create dataframe with RMM indices
     df = pd.DataFrame({
         "date": pd.to_datetime(time),
         "RMM1": RMM1,
@@ -10,6 +12,7 @@ def save_rmm_indices(time, RMM1, RMM2, filename, method_str="WH04_method:_OLR_&_
     })
     df = df.set_index("date")
 
+    # Fill in any missing dates in the range
     full_range = pd.date_range(start=df.index.min(), end=df.index.max(), freq="D")
     df = df.reindex(full_range)
 
@@ -18,11 +21,12 @@ def save_rmm_indices(time, RMM1, RMM2, filename, method_str="WH04_method:_OLR_&_
 
     missing_mask = np.isnan(RMM1_vals) | np.isnan(RMM2_vals)
 
+    # Compute amplitude and phase from RMM1 and RMM2
     amplitude = np.sqrt(RMM1_vals**2 + RMM2_vals**2)
     angle = (np.arctan2(RMM2_vals, RMM1_vals) * 180 / np.pi + 180) % 360
-    phase = np.floor(angle / 45) + 1
-    
-    # fill missing
+    phase = np.floor(angle / 45) + 1  # 8 phases, each 45 degrees
+
+    # Fill missing values with standard missing value codes
     RMM1_vals[missing_mask] = MISSING_VAL
     RMM2_vals[missing_mask] = MISSING_VAL
     amplitude[missing_mask] = MISSING_VAL
@@ -45,17 +49,20 @@ def save_rmm_indices(time, RMM1, RMM2, filename, method_str="WH04_method:_OLR_&_
     print(f"Saved RMM indices to: {filename}")
 
 def load_rmm_indices(filepath, start_year=1979, end_year=2025, MISSING_VAL=9.99999962e35):
+    """Load RMM indices from text file and return as DataFrame."""
     data = []
 
     with open(filepath, 'r') as f:
         for line in f:
             line = line.strip()
+            # Skip header lines and empty lines
             if not line or line.startswith("RMM") or line.startswith("year"):
                 continue
 
             parts = line.split()
             year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
 
+            # Filter by year range
             if year < start_year or year > end_year:
                 continue
 
@@ -64,18 +71,21 @@ def load_rmm_indices(filepath, start_year=1979, end_year=2025, MISSING_VAL=9.999
             phase = int(float(parts[5]))
             amplitude = float(parts[6])
 
+            # Convert missing value codes to NaN
             rmm1 = np.nan if rmm1 == MISSING_VAL else rmm1
             rmm2 = np.nan if rmm2 == MISSING_VAL else rmm2
             amplitude = np.nan if amplitude == MISSING_VAL else amplitude
-            phase = np.nan if phase == 999 else phase 
+            phase = np.nan if phase == 999 else phase
 
             data.append([year, month, day, rmm1, rmm2, phase, amplitude])
 
+    # Create DataFrame with datetime index
     df = pd.DataFrame(data, columns=["year", "month", "day", "RMM1", "RMM2", "phase", "amplitude"])
     df["date"] = pd.to_datetime(df[["year", "month", "day"]])
     df = df.set_index("date")
     df = df[["RMM1", "RMM2", "phase", "amplitude"]].sort_index()
 
+    # Fill in any missing dates in the range
     full_index = pd.date_range(df.index.min(), df.index.max(), freq="D")
     df = df.reindex(full_index)
 

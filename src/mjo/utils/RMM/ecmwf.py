@@ -1,4 +1,4 @@
-import os 
+import os
 import glob
 import warnings
 import xarray as xr
@@ -11,7 +11,9 @@ from mjo.utils.RMM.FuXi.utils import format, walk_to_forecast_dir
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS.*")
 
+
 def compute_ensembe_mean(forecast_root_dir):
+    """Compute ensemble mean from ECMWF S2S forecasts."""
     # Open (lazy)
     ds_ttr = xr.open_dataset(os.path.join(forecast_root_dir, 'ttr', 'ttr.nc'))
     ds_u   = xr.open_dataset(os.path.join(forecast_root_dir, 'u', 'u.nc'))
@@ -40,16 +42,19 @@ def compute_ensembe_mean(forecast_root_dir):
 
 
 def main():
-    
+    """Compute RMM indices from ECMWF S2S forecasts using precomputed EOFs."""
+    # File paths
     olr_file_path = '/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc'
     era5_file_path = '/glade/derecho/scratch/kvirji/DATA/era5_daily/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr'
     reference_dir = f'/glade/derecho/scratch/kvirji/DATA/MJO/U200/EOF'
     save_dir = f'/glade/derecho/scratch/kvirji/DATA/MJO/U200/ECMWF'
-
+    forecast_root_dir = '/glade/derecho/scratch/kvirji/s2s.dir/ecmwf/'
+    init_date = '2017-02-01'
+    
     os.makedirs(save_dir, exist_ok=True)
 
-    #open required datasets
-    raw_olr_ds = xr.open_dataset(olr_file_path).isel(time=slice(249, None)) #remove some corrupted dates
+    # Load reference datasets and EOFs
+    raw_olr_ds = xr.open_dataset(olr_file_path).isel(time=slice(249, None))  # Remove corrupted dates
     raw_era5_ds = xr.open_zarr(era5_file_path)
     seasonal_cycle_ds = xr.open_dataset(os.path.join(reference_dir, 'seasonal_cycle.nc')).load()
     normalization_factor_ds = xr.open_dataset(os.path.join(reference_dir, 'normalization_factor.nc')).load()
@@ -71,8 +76,6 @@ def main():
     gt_u850_data_2p5d = gt_u850_regridder(gt_u850_data)
     gt_u200_data_2p5d = gt_u200_regridder(gt_u200_data)
 
-    forecast_root_dir = '/glade/derecho/scratch/kvirji/s2s.dir/ecmwf/'
-    init_date = '2017-02-01'
     #compute_ensembe_mean(forecast_root_dir)
     ds_ttr = xr.open_dataset(os.path.join(forecast_root_dir, 'ttr', 'ttr_ensmean.nc')).rename_dims(latitude='lat', longitude='lon')
     ds_u   = xr.open_dataset(os.path.join(forecast_root_dir, 'u', 'u_ensmean.nc')).rename_dims(latitude='lat', longitude='lon')
@@ -99,9 +102,10 @@ def main():
     gt_u200_data_2p5d_slice  = gt_u200_data_2p5d.sel(time=period)
 
 
-    # Day 1: keep the first forecast step "as is" (then convert units/sign)
+    # Convert accumulated top thermal radiation to daily OLR
+    # Day 1: use first forecast step (convert from J/m² to W/m²)
     olr_day1 = (-ttr_2p5d['ttr'].isel(forecast_period=0) / 86400.0)
-    # Day 2..N: use differences of the accumulated field
+    # Day 2+: use differences of accumulated field
     olr_diffs = -ttr_2p5d['ttr'].diff('forecast_period') / 86400.0
     olr_2p5d = xr.concat([olr_day1, olr_diffs], dim='forecast_period')
 
@@ -124,40 +128,41 @@ def main():
         .drop_vars('forecast_period')                          
     )
 
+    # Combine ground truth history with forecast
     combined_olr_data_2p5d = xr.concat([gt_olr_data_2p5d_slice, olr_2p5d.to_dataset(name='olr')], dim='time')
     combined_u850_data_2p5d = xr.concat([gt_u850_data_2p5d_slice, u850_2p5d], dim='time')
     combined_u200_data_2p5d = xr.concat([gt_u200_data_2p5d_slice, u200_2p5d], dim='time')
-    
+
+    # Remove seasonal cycle
     olr_seasonal_cycle = seasonal_cycle_ds['olr'].sel(dayofyear=combined_olr_data_2p5d.time.dt.dayofyear)
     u850_seasonal_cycle = seasonal_cycle_ds['u850'].sel(dayofyear=combined_u850_data_2p5d.time.dt.dayofyear)
     u200_seasonal_cycle = seasonal_cycle_ds['u200'].sel(dayofyear=combined_u200_data_2p5d.time.dt.dayofyear)
 
-    # subtract mean and fisrt three harmonics
     olr_anomalies = combined_olr_data_2p5d - olr_seasonal_cycle
     u850_anomalies = combined_u850_data_2p5d - u850_seasonal_cycle
     u200_anomalies = combined_u200_data_2p5d - u200_seasonal_cycle
 
-    #detrend anomalies by removing 120d running mean
+    # Detrend using 120-day running mean
     detrended_olr_anomalies = detrend_anomalies(olr_anomalies)
     detrended_u850_anomalies = detrend_anomalies(u850_anomalies)
     detrended_u200_anomalies = detrend_anomalies(u200_anomalies)
 
-    #average over 15S-15N
+    # Average over 15°S-15°N latitude band
     detrended_olr_anomalies_latitude_band_avg = latitude_band_average(detrended_olr_anomalies)
     detrended_u850_anomalies_latitude_band_avg = latitude_band_average(detrended_u850_anomalies)
     detrended_u200_anomalies_latitude_band_avg = latitude_band_average(detrended_u200_anomalies)
 
-    #normalize each variable with factors calculated from reference period
+    # Normalize using factors from reference period
     detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg / normalization_factor_ds['olr']
     detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg / normalization_factor_ds['u850']
     detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg / normalization_factor_ds['u200']
 
-    #drop missing values
+    # Drop missing values
     detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
     detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
     detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
 
-    #ensure timesteps are aligned
+    # Align timesteps across all variables
     olr, u850, u200 = xr.align(
         detrended_olr_anomalies_latitude_band_avg_norm,
         detrended_u850_anomalies_latitude_band_avg_norm,
@@ -165,18 +170,18 @@ def main():
         join='inner'
     )
 
-    #combine data
-    X = xr.concat([olr['olr'], u850['u850'], u200['u200']], dim='lon')  # (time, 3 × lon)  
+    # Combine data into single array (time, 3 × lon)
+    X = xr.concat([olr['olr'], u850['u850'], u200['u200']], dim='lon')
 
-    #project data onto reference EOFs
+    # Project onto reference EOFs to compute RMM indices
     RMM1 = X.values @ EOF_ds['EOF1'].values
     RMM2 = X.values @ EOF_ds['EOF2'].values
 
-    #divive RMM indices by factors calculated from reference period
+    # Normalize RMM indices using reference period standard deviations
     RMM1_norm = RMM1 / normalization_factor_ds['RMM1_std'].values
     RMM2_norm = RMM2 / normalization_factor_ds['RMM2_std'].values
 
-    #save indices to txt file
+    # Save indices to text file
     save_rmm_indices(
         time=olr.time.values,
         RMM1=RMM1_norm,

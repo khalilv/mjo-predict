@@ -1,0 +1,30 @@
+# Date ranges for training and testing
+dates:
+  train_start: '2001-01-01'
+  train_end: '2019-01-01'
+  test_end: '2022-01-01'
+
+# File paths
+paths:
+  forecast_dir: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi
+  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
+  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/exps/test/2019-2021/baselines/four_groups
+
+# Ensemble member to use (e.g., 'mean', or member number)
+member: mean
+
+# Number of phase groups (must be 1, 4, or 8)
+num_phase_groups: 4
+
+# Filter out low amplitude samples (amplitude < 1) during training
+filter_low_amplitude_samples: false
+
+# Bias correction methods to run
+# Available: 'mean_bias', 'mvlr'
+methods:
+  - mean_bias
+  - mvlr
+
+# MVLR-specific settings
+# Include day-of-year as additional features for MVLR
+mvlr_include_doy: true

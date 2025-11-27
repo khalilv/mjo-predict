@@ -12,6 +12,19 @@ import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
 
 def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplitude, gt_amplitude, pred_label = None, gt_label = None, output_filename = None):
+    """Create scatter plots comparing predicted vs ground truth RMM indices and amplitude.
+
+    Args:
+        pred_rmm1: Predicted RMM1 values
+        gt_rmm1: Ground truth RMM1 values
+        pred_rmm2: Predicted RMM2 values
+        gt_rmm2: Ground truth RMM2 values
+        pred_amplitude: Predicted amplitude values
+        gt_amplitude: Ground truth amplitude values
+        pred_label: Label for predictions (default: 'Predictions')
+        gt_label: Label for ground truth (default: 'Ground Truth')
+        output_filename: Path to save figure (if None, displays plot)
+    """
     pred_label = pred_label if pred_label else 'Predictions'
     gt_label = gt_label if gt_label else 'Ground Truth'
 
@@ -1914,5 +1927,54 @@ def scatter_amplitudes_by_init_date_tripanel(
 
     if output_filename:
         fig.savefig(output_filename, bbox_inches="tight", dpi=300)
+    else:
+        plt.show()
+
+
+def eof_explained_variance_plot(explained_variance, output_filename=None):
+    """Create bar plot of explained variance for EOF components.
+
+    Args:
+        explained_variance: Array of explained variance ratios
+        output_filename: Path to save figure (if None, displays plot)
+    """
+    plt.figure(figsize=(10, 4))
+    plt.bar(np.arange(len(explained_variance)), explained_variance * 100)
+    plt.title("Explained Variance of Principal Components")
+    plt.xlabel("Principal Component")
+    plt.ylabel("Explained Variance (%)")
+    plt.tight_layout()
+
+    if output_filename:
+        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
+
+def eof_pattern_plot(eof_vector, longitudes, variable_labels, eof_number, output_filename=None):
+    """Create line plot showing EOF spatial pattern for multiple variables.
+
+    Args:
+        eof_vector: EOF eigenvector reshaped as (n_variables, n_longitudes)
+        longitudes: Longitude values
+        variable_labels: Labels for each variable (e.g., ['OLR', 'U850', 'U200'])
+        eof_number: EOF number for title (e.g., 1 or 2)
+        output_filename: Path to save figure (if None, displays plot)
+    """
+    plt.figure(figsize=(10, 4))
+    for i in range(len(variable_labels)):
+        plt.plot(longitudes, eof_vector[i], label=variable_labels[i])
+
+    plt.title(f"EOF{eof_number}")
+    plt.xlabel("Longitude (°E)")
+    plt.ylabel("Eigenvector")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    if output_filename:
+        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.close()
     else:
         plt.show()
