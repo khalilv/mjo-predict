@@ -5,6 +5,14 @@ import torch
 from torchmetrics import Metric
 
 class MSE(Metric):
+    """Mean Squared Error metric for multi-variable predictions.
+
+    Args:
+        vars: List of variable names
+        transforms: Optional transform to apply before computing metric
+        suffix: Optional suffix for metric names
+        **kwargs: Additional arguments passed to torchmetrics.Metric
+    """
     def __init__(self, vars, transforms=None, suffix=None, **kwargs):
         super().__init__(**kwargs)
         self.transforms = transforms
@@ -14,11 +22,17 @@ class MSE(Metric):
         self.add_state("num_elements", default=torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, preds: torch.Tensor, targets: torch.Tensor):
+        """Update metric state with new predictions and targets.
+
+        Args:
+            preds: Predictions of shape (B, T, V)
+            targets: Ground truth of shape (B, T, V)
+        """
         assert preds.shape == targets.shape, f"Found shape mismatch between preds: {preds.shape} and targets: {targets.shape}"
         if self.transforms is not None:
             preds = self.transforms(preds)
             targets = self.transforms(targets)
-            
+
         # preds, targets: (B, T, V)
         error = preds - targets
         squared_error = error ** 2
@@ -26,17 +40,30 @@ class MSE(Metric):
         self.num_elements += squared_error.shape[0] * squared_error.shape[1]
 
     def compute(self):
+        """Compute MSE for each variable and overall average.
+
+        Returns:
+            Dictionary mapping metric names to values
+        """
         loss_dict = {}
         for i, var in enumerate(self.vars):
             var_mse = self.sum_squared_error[i] / self.num_elements
             var_name = f"mse_{var}_{self.suffix}" if self.suffix else f"mse_{var}"
             loss_dict[var_name] = var_mse
-        
+
         name = f"mse_{self.suffix}" if self.suffix else "mse"
         loss_dict[name] = torch.mean(torch.stack(list(loss_dict.values())))
         return loss_dict
 
 class MAE(Metric):
+    """Mean Absolute Error metric for multi-variable predictions.
+
+    Args:
+        vars: List of variable names
+        transforms: Optional transform to apply before computing metric
+        suffix: Optional suffix for metric names
+        **kwargs: Additional arguments passed to torchmetrics.Metric
+    """
     def __init__(self, vars, transforms=None, suffix=None, **kwargs):
         super().__init__(**kwargs)
         self.transforms = transforms
@@ -46,6 +73,12 @@ class MAE(Metric):
         self.add_state("num_elements", default=torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, preds: torch.Tensor, targets: torch.Tensor):
+        """Update metric state with new predictions and targets.
+
+        Args:
+            preds: Predictions of shape (B, T, V)
+            targets: Ground truth of shape (B, T, V)
+        """
         assert preds.shape == targets.shape, f"Found shape mismatch between preds: {preds.shape} and targets: {targets.shape}"
         if self.transforms is not None:
             preds = self.transforms(preds)
@@ -57,6 +90,11 @@ class MAE(Metric):
         self.num_elements += abs_error.shape[0] * abs_error.shape[1]  # B*T
 
     def compute(self):
+        """Compute MAE for each variable and overall average.
+
+        Returns:
+            Dictionary mapping metric names to values
+        """
         loss_dict = {}
         for i, var in enumerate(self.vars):
             var_mae = self.sum_abs_error[i] / self.num_elements
@@ -69,6 +107,19 @@ class MAE(Metric):
     
 
 class BMSE(Metric):
+    """Bivariate Mean Squared Error for MJO RMM indices.
+
+    Computes BMSE and its decomposition into amplitude and phase components.
+    BMSE = BMSEa + BMSEp where:
+    - BMSEa: Amplitude error component
+    - BMSEp: Phase error component
+
+    Args:
+        max_lead_time: Maximum lead time to compute metrics for
+        transforms: Optional transform to apply before computing metric
+        suffix: Optional suffix for metric names
+        **kwargs: Additional arguments passed to torchmetrics.Metric
+    """
     def __init__(self, max_lead_time, transforms=None, suffix=None, **kwargs):
         super().__init__(**kwargs)
         self.transforms = transforms
@@ -80,6 +131,12 @@ class BMSE(Metric):
         self.add_state("num_elements", default=torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, preds: torch.Tensor, targets: torch.Tensor):
+        """Update metric state with new predictions and targets.
+
+        Args:
+            preds: Predictions of shape (B, T, 2) where last dim is (RMM1, RMM2)
+            targets: Ground truth of shape (B, T, 2)
+        """
         assert preds.shape == targets.shape, f"Found shape mismatch between preds: {preds.shape} and targets: {targets.shape}"
         assert preds.shape[2] == 2, f'Expected 2 variables (RMM1, RMM2) for BMSE calculation but found {preds.shape[2]}'
         if self.transforms is not None:
@@ -92,19 +149,27 @@ class BMSE(Metric):
         self.sum_squared_error += squared_error.sum(dim=(0, 2))  # shape (T,)
         self.num_elements += squared_error.shape[0]  # batch size
 
+        # Compute amplitude errors
         pred_amplitude = torch.sqrt(torch.sum(preds**2, dim=-1))  # shape: (B, T)
-        target_amplitude = torch.sqrt(torch.sum(targets**2, dim=-1))  
+        target_amplitude = torch.sqrt(torch.sum(targets**2, dim=-1))
         amplitude_error = pred_amplitude - target_amplitude
         amplitude_squared_error = amplitude_error ** 2
         self.sum_squared_amplitude_error = torch.sum(amplitude_squared_error, dim=0)
 
+        # Compute phase errors
         pred_phase = torch.arctan2(preds[:,:,1], preds[:,:,0])  # shape: (B, T)
-        target_phase = torch.arctan2(targets[:,:,1], targets[:,:,0]) 
+        target_phase = torch.arctan2(targets[:,:,1], targets[:,:,0])
         phase_error = 2*pred_amplitude*target_amplitude*(1-torch.cos(pred_phase - target_phase))
         self.sum_phase_error = torch.sum(phase_error, dim=0)
 
 
     def compute(self):
+        """Compute BMSE, BMSEa, and BMSEp for each lead time and overall average.
+
+        Returns:
+            Dictionary mapping metric names to values, including per-lead-time
+            and averaged metrics for BMSE, BMSEa (amplitude), and BMSEp (phase)
+        """
         bmse_loss_dict = {}
         bmsea_loss_dict = {}
         bmsep_loss_dict = {}

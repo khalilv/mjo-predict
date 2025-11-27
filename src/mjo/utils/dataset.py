@@ -95,13 +95,26 @@ class NPZReader(IterableDataset):
 
 
 class Forecast(IterableDataset):
+    """Iterable dataset for MJO forecasting with optional baseline forecast loading.
+
+    Args:
+        dataset: NPZReader dataset instance
+        forecast_dir: Optional directory containing baseline forecast NPZ files
+        load_forecast_members: Whether to load ensemble members in addition to mean
+        normalize_data: Whether to apply normalization transforms
+        in_transforms: Transform for input variables
+        date_transforms: Transform for date encoding variables
+        out_transforms: Transform for output variables
+        filter_mjo_events: If True, only include samples where MJO amplitude > 1
+        filter_mjo_phases: List of MJO phases to include (empty list = all phases)
+    """
     def __init__(
-        self, 
-        dataset: NPZReader, 
+        self,
+        dataset: NPZReader,
         forecast_dir: str = None,
         load_forecast_members: bool = False,
-        normalize_data: bool = False, 
-        in_transforms = None, 
+        normalize_data: bool = False,
+        in_transforms = None,
         date_transforms = None,
         out_transforms = None,
         filter_mjo_events: bool = False,
@@ -176,9 +189,18 @@ class Forecast(IterableDataset):
 
 
 class ShuffleIterableDataset(IterableDataset):
+    """Shuffles an iterable dataset using a buffer.
+
+    Uses reservoir sampling with a fixed-size buffer to shuffle data on-the-fly
+    without loading the entire dataset into memory.
+
+    Args:
+        dataset: Source iterable dataset
+        max_buffer_size: Maximum number of elements to hold in shuffle buffer
+    """
     def __init__(
-            self, 
-            dataset, 
+            self,
+            dataset,
             max_buffer_size: int = 100
     ) -> None:
         super().__init__()
@@ -187,6 +209,7 @@ class ShuffleIterableDataset(IterableDataset):
         self.max_buffer_size = max_buffer_size
 
     def __iter__(self):
+        """Yield shuffled samples using reservoir sampling."""
         buf = []
         for x in self.dataset:
             if len(buf) == self.max_buffer_size:
@@ -201,6 +224,17 @@ class ShuffleIterableDataset(IterableDataset):
 
 
 def collate_fn(batch):
+    """Collate function for DataLoader to batch forecast samples.
+
+    Args:
+        batch: List of samples from Forecast dataset
+
+    Returns:
+        Tuple of batched tensors and metadata:
+        (in_data, in_date_encodings, out_data, out_date_encodings, forecast_data,
+         residual, in_variables, date_variables, out_variables, in_timestamps,
+         out_timestamps, forecast_timestamps)
+    """
     batch = list(zip(*batch)) 
     in_data = torch.stack(batch[0])
     in_date_encodings = torch.stack(batch[1]) if batch[1][0] is not None else None
