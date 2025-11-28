@@ -1,6 +1,6 @@
 # MJO Forecasting with Deep Learning
 
-Framework to forcast the Madden-Julian Oscillation (MJO) using deep learning models.
+Framework to forecast the Madden-Julian Oscillation (MJO) using deep learning models.
 
 ## Installation
 
