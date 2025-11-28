@@ -18,7 +18,9 @@ pip install -e .
 ## Models
 
 **TSMixer** - Time and feature mixing model for multivariate forecasting
+
 **TFT** - Temporal Fusion Transformer with multi-head attention
+
 **DLBC** - Deep learning bias correction to correct MJO biases in forecasting models
 
 ## Usage
@@ -57,6 +59,9 @@ python src/mjo/utils/RMM/FuXi/preprocess.py  # Preprocess FuXi-S2S RMM indices f
 # Generate lead time performance heatmaps
 python src/mjo/utils/analysis/lead_time_heatmaps.py --config MY_CONFIG
 
+# Generate lead time BCORR/BMSE error plots
+python src/mjo/utils/analysis/lead_time_errors.py --config MY_CONFIG
+
 # Monthly error analysis
 python src/mjo/utils/analysis/monthly_errors.py --config MY_CONFIG
 ```
@@ -74,12 +79,3 @@ mjo-predict/
 ├── environment.yml  # Conda environment
 └── pyproject.toml   # Package metadata
 ```
-
-## Features
-
-- **Models**: TSMixer, TFT, DLBC architectures
-- **Training**: PyTorch Lightning with distributed GPU support
-- **Optimization**: Optuna for hyperparameter tuning
-- **RMM Processing**: RMM index calculation for observations and forecast data
-- **Metrics**: MSE, MAE, BMSE, BCORR
-- **Analysis**: Lead time heatmaps, lead time errors, monthly errors, filtering on initial and forecasted amplitude/phase
