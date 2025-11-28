@@ -1,6 +1,6 @@
 # MJO Forecasting with Deep Learning
 
-Deep learning models for Madden-Julian Oscillation (MJO) forecasting over sub-seasonal to seasonal horizons.
+Framework to forcast the Madden-Julian Oscillation (MJO) using deep learning models.
 
 ## Installation
 
@@ -17,45 +17,48 @@ pip install -e .
 
 ## Models
 
-**TSMixer** - Time and feature mixing for multivariate forecasting
+**TSMixer** - Time and feature mixing model for multivariate forecasting
 **TFT** - Temporal Fusion Transformer with multi-head attention
-**DLBC** - Deep Learning Bias Correction for dynamical forecasts
+**DLBC** - Deep learning bias correction to correct MJO biases in forecasting models
 
 ## Usage
 
 ### Training
 ```bash
 # Train models
-python src/mjo/TSMixer/train.py --config configs/TSMixer/train.yaml
-python src/mjo/TFT/train.py --config configs/TFT/train.yaml
-python src/mjo/DLBC/train.py --config configs/DLBC/train.yaml
+python src/mjo/TSMixer/train.py --config MY_CONFIG
+python src/mjo/TFT/train.py --config MY_CONFIG
+python src/mjo/DLBC/train.py --config MY_CONFIG
 ```
 
 ### Hyperparameter Tuning
 ```bash
-python src/mjo/TSMixer/tune.py --config configs/TSMixer/tune.yaml
+python src/mjo/TSMixer/tune.py --config MY_CONFIG
 ```
 
-### RMM Processing
+### RMM Computation
 ```bash
-# Process RMM indices from various sources
+# Compute RMM indices from various sources
 python src/mjo/utils/RMM/ecmwf.py        # ECMWF forecast data
-python src/mjo/utils/RMM/mean.py          # Ensemble mean processing
-python src/mjo/utils/RMM/eof.py           # EOF-based RMM calculation
+python src/mjo/utils/RMM/observation.py  # Compute observed RMM indices
+python src/mjo/utils/RMM/eof.py          # Compute EOF over a given reference period
+python src/mjo/utils/RMM/preprocess.py   # Preprocess RMM indices for model training
+python src/mjo/utils/RMM/io.py           # Handles saving/loading functionality
 
-# FuXi model processing
-python src/mjo/utils/RMM/FuXi/preprocess.py  # Preprocess FuXi data
-python src/mjo/utils/RMM/FuXi/forecast.py    # Generate forecasts
-python src/mjo/utils/RMM/FuXi/generate.py    # Generate RMM indices
+# FuXi-S2S model processing
+python src/mjo/utils/RMM/FuXi/generate.py    # Generate probabilistic global forecasts with FuXi-S2S
+python src/mjo/utils/RMM/FuXi/mean.py        # Compute FuXi-S2S ensemble mean forecast
+python src/mjo/utils/RMM/FuXi/forecast.py    # Generate RMM indices from FuXi-S2S forecasts
+python src/mjo/utils/RMM/FuXi/preprocess.py  # Preprocess FuXi-S2S RMM indices for model training
 ```
 
 ### Analysis
 ```bash
 # Generate lead time performance heatmaps
-python src/mjo/utils/analysis/lead_time_heatmaps.py --config configs/analysis/lead_time_heatmaps.yaml
+python src/mjo/utils/analysis/lead_time_heatmaps.py --config MY_CONFIG
 
 # Monthly error analysis
-python src/mjo/utils/analysis/monthly_errors.py --config configs/analysis/monthly_errors.yaml
+python src/mjo/utils/analysis/monthly_errors.py --config MY_CONFIG
 ```
 
 ## Repository Structure
@@ -75,9 +78,8 @@ mjo-predict/
 ## Features
 
 - **Models**: TSMixer, TFT, DLBC architectures
-- **Training**: PyTorch Lightning with GPU support
+- **Training**: PyTorch Lightning with distributed GPU support
 - **Optimization**: Optuna for hyperparameter tuning
-- **RMM Processing**: ECMWF, FuXi, and EOF-based RMM index calculation
-- **Metrics**: MSE, MAE, BMSE (bivariate with amplitude/phase)
-- **Analysis**: Lead time heatmaps, monthly errors, skill vs. amplitude/phase
-- **Data**: NPZ format for RMM indices and forecast data
+- **RMM Processing**: RMM index calculation for observations and forecast data
+- **Metrics**: MSE, MAE, BMSE, BCORR
+- **Analysis**: Lead time heatmaps, lead time errors, monthly errors, filtering on initial and forecasted amplitude/phase
