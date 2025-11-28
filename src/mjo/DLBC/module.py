@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from typing import Any
 from pytorch_lightning import LightningModule
-from mjo.DLBC.model import PerLeadTimeMLP, PerLeadTimeLSTM
+from mjo.DLBC.model import PerLeadTimeLSTM
 from mjo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from mjo.utils.metrics import MSE, MAE
 from mjo.utils.RMM.io import save_rmm_indices
