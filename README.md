@@ -6,7 +6,7 @@ Framework to forcast the Madden-Julian Oscillation (MJO) using deep learning mod
 
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/khalilv/mjo-predict.git
 cd mjo-predict
 
 # Create environment
