@@ -49,7 +49,7 @@ plot_settings:
 
   # Text labels
   labels:
-    x_label: "Lookback window (days)"
+    x_label: "Lookback window L (days)"
     y_label: "Lead time (days)"
     colorbar_label: "BCOR"
     legend_label: "{threshold} skill threshold"

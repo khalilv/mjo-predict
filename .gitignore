@@ -143,7 +143,5 @@ exps
 #plots
 plots
 
-#DATA
-DATA
-
+#pretrained weights
 pretrained_weights

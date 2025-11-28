@@ -5,23 +5,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mjo"
 version = "0.0.1"
-authors =[
-    {name="Khalil Virji", email="kvirji@uci.edu"},
-]
-description = ""
+description = "Deep learning models for MJO forecasting"
 readme = "README.md"
 requires-python = ">=3.8"
+authors = [
+    {name = "Khalil Virji", email = "kvirji@uci.edu"},
+]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-]
-dependencies = [
-
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/khalilv/mjo-predict"
-"Bug Tracker" = "https://github.com/khalilv/mjo-predict/issues"
+Homepage = "https://github.com/khalilv/mjo-predict"
 
 [tool.setuptools.packages.find]
 where = ["src"]

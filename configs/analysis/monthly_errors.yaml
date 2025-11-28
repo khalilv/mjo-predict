@@ -16,10 +16,10 @@ forecast_dirs: []
   # - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/bias-correction/LSTM/combined
 
 # Labels for each forecast
-plot_labels:
-  - 'Mean bias correction'
-  - 'MVLR'
-  - 'LSTM'
+plot_labels: []
+  # - 'Mean bias correction'
+  # - 'MVLR'
+  # - 'LSTM'
 
 # Plot settings
 plot_settings:
@@ -35,7 +35,7 @@ plot_settings:
 
   # Plot title template (use {model} placeholder for model name)
   titles:
-    template: '{model} - Seasonality'
+    template: 'Seasonality of {model} MJO forecasts'
 
   # Axis labels
   labels:
