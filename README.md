@@ -86,6 +86,7 @@ The models use **RMM (Real-time Multivariate MJO) indices** to characterize the 
 ```
 mjo-predict/
 ├── configs/          # YAML configuration files
+├── data/             # FuXi-S2S RMM forecast data
 ├── src/mjo/
 │   ├── DLBC/        # DLBC model
 │   ├── TFT/         # TFT model
