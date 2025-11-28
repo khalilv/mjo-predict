@@ -66,6 +66,21 @@ python src/mjo/utils/analysis/lead_time_errors.py --config MY_CONFIG
 python src/mjo/utils/analysis/monthly_errors.py --config MY_CONFIG
 ```
 
+## Data
+
+The repository includes **FuXi-S2S MJO forecast data** stored in `data/`:
+- `FuXi_2002-2011.zip` - MJO forecasts from 2002-2011
+- `FuXi_2012-2021.zip` - MJO forecasts from 2012-2021
+
+**Structure**: Each zip file contains forecast initialization dates organized as `FuXi/YYYY-MM-DD/`, with 51 ensemble members (00.txt through 50.txt) per date. Each member file contains the RMM forecast trajectory in text format with columns:
+
+```
+Year  Month  Day  RMM1  RMM2  Phase  Amplitude Method
+```
+
+The models use **RMM (Real-time Multivariate MJO) indices** to characterize the MJO. RMM indices are two time-varying components (RMM1, RMM2) derived from OLR (Outgoing Longwave Radiation) and zonal wind data at 850 hPa and 200 hPa. From RMM1 and RMM2, the MJO amplitude and phase (1-8) are quantified.
+
+
 ## Repository Structure
 
 ```
