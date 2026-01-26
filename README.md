@@ -1,6 +1,6 @@
 # MJO Forecasting with Deep Learning
 
-Framework to forcast the Madden-Julian Oscillation (MJO) using deep learning models.
+Framework to forecast the Madden-Julian Oscillation (MJO) using deep learning models.
 
 ## Installation
 
@@ -72,7 +72,7 @@ The repository includes **FuXi-S2S MJO forecast data** stored in `data/`:
 - `FuXi_2002-2011.zip` - MJO forecasts from 2002-2011
 - `FuXi_2012-2021.zip` - MJO forecasts from 2012-2021
 
-**Structure**: Each zip file contains forecast initialization dates organized as `FuXi/YYYY-MM-DD/`, with 51 ensemble members (00.txt through 50.txt) per date. Each member file contains the RMM forecast trajectory in text format with columns:
+**Structure**: Each zip file contains forecast initialization dates organized as `FuXi/YYYY-MM-DD/`, with 51 ensemble members (00.txt through 50.txt) per date. Each member file contains the forecast RMM trajectory in text format with columns:
 
 ```
 Year  Month  Day  RMM1  RMM2  Phase  Amplitude Method
@@ -86,6 +86,7 @@ The models use **RMM (Real-time Multivariate MJO) indices** to characterize the 
 ```
 mjo-predict/
 ├── configs/          # YAML configuration files
+├── data/             # FuXi-S2S MJO forecast data
 ├── src/mjo/
 │   ├── DLBC/        # DLBC model
 │   ├── TFT/         # TFT model
