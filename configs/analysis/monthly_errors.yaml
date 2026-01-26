@@ -25,10 +25,10 @@ plot_labels: []
 plot_settings:
   # Font sizes and styles
   fonts:
-    title: 14
-    axis_label: 12
-    tick_label: 11
-    colorbar_label: 12
+    title: 16
+    axis_label: 14
+    tick_label: 14
+    colorbar_label: 14
     title_weight: normal
     title_label_weight: bold  # Only bold subplot labels like (a), (b)
     # family: sans-serif

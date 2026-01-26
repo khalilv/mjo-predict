@@ -44,11 +44,11 @@ plot_settings:
 
   # Font sizes and styles
   fonts:
-    title: 14
-    axis_label: 12
-    region_label: 12
-    phase_label: 12
-    legend: 11
+    title: 16
+    axis_label: 14
+    region_label: 14
+    phase_label: 14
+    legend: 14
     title_weight: normal
     title_label_weight: bold  # Only bold subplot labels like (a), (b)
     # family: sans-serif

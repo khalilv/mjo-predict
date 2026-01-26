@@ -51,7 +51,7 @@ def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplit
 
     plt.tight_layout()
     if output_filename:
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
         plt.close()
     else:
         plt.show()
@@ -240,7 +240,7 @@ def phase_space_plot(
 
     plt.tight_layout()
     if output_filename:
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
         plt.close()
 
     return fig
@@ -329,7 +329,7 @@ def phase_space_composite_plot(
             angle = (5 + i) * np.pi / 4
             x = np.cos(angle)
             y = np.sin(angle)
-            plt.plot([0, r * x], [0, r * y], color='lightgray', lw=0.8, zorder=0)
+            plt.plot([0, r * x], [0, r * y], color='lightgray', lw=2, zorder=0)
 
         font_props = {'fontsize': fontsize_phase_label, 'ha': 'center', 'va': 'center', 'color': 'gray'}
         if font_family:
@@ -346,7 +346,7 @@ def phase_space_composite_plot(
 
     ax = plt.gca()
     # Draw a unit circle in light gray
-    unit_circle = mpatches.Circle((0, 0), 1, edgecolor='lightgray', facecolor='none', linewidth=0.8, linestyle='-', zorder=0)
+    unit_circle = mpatches.Circle((0, 0), 1, edgecolor='lightgray', facecolor='none', linewidth=2, linestyle='-', zorder=0)
     ax.add_patch(unit_circle)
 
     # Use configured colormap
@@ -354,26 +354,26 @@ def phase_space_composite_plot(
 
     for i, label in enumerate(labels):
         for _, (rmm1, rmm2) in pred_composites[i].items():
-            plt.plot(rmm1, rmm2, color=colors[i], alpha=0.8, label=label)
+            plt.plot(rmm1, rmm2, color=colors[i], alpha=0.8, label=label, linewidth=2)
             plt.plot(rmm1[0], rmm2[0], color=colors[i], marker='o')  # start
             for lt in range(marker_interval, len(rmm1), marker_interval):
                 plt.plot(rmm1[lt], rmm2[lt], color=colors[i], marker='.')
 
     for _, (rmm1, rmm2) in gt_composites.items():
-        plt.plot(rmm1, rmm2, color='black', linestyle='--', alpha=0.75, label=gt_label)
+        plt.plot(rmm1, rmm2, color='black', linestyle='--', alpha=0.75, label=gt_label, linewidth=2)
         plt.plot(rmm1[0], rmm2[0], color='black', marker='o')  # start
         for lt in range(marker_interval, len(rmm1), marker_interval):
             plt.plot(rmm1[lt], rmm2[lt], color='black', marker='.')
 
     if bom_composites is not None:
         for _, (rmm1, rmm2) in bom_composites.items():
-            plt.plot(rmm1, rmm2, color='lightgray', linestyle='--', alpha=0.75, label='BoM')
+            plt.plot(rmm1, rmm2, color='lightgray', linestyle='--', alpha=0.75, label='BoM', linewidth=2)
             plt.plot(rmm1[0], rmm2[0], color='lightgray', marker='o')  # start
             for lt in range(marker_interval, len(rmm1), marker_interval):
                 plt.plot(rmm1[lt], rmm2[lt], color='lightgray', marker='.')
 
-    plt.axhline(0, color='gray', linewidth=0.5)
-    plt.axvline(0, color='gray', linewidth=0.5)
+    plt.axhline(0, color='lightgray', linewidth=2, zorder=0)
+    plt.axvline(0, color='lightgray', linewidth=2, zorder=0)
     _draw_phase_wedges()
     _add_region_labels()
 
@@ -418,7 +418,7 @@ def phase_space_composite_plot(
 
     plt.tight_layout()
     if output_filename:
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
         plt.close()
 
     return fig
@@ -499,7 +499,7 @@ def lead_time_skill_subplot(
 
     # Default threshold style
     if threshold_style is None:
-        threshold_style = {'color': 'black', 'linestyle': '--', 'linewidth': 1}
+        threshold_style = {'color': 'black', 'linestyle': '--', 'linewidth': 2}
 
     # Create axes if not provided
     if ax is None:
@@ -507,22 +507,29 @@ def lead_time_skill_subplot(
 
     # Generate colors
     colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
+    # If using cividis and more than one label, adjust the last color to be slightly darker
+    if colormap == "cividis" and len(labels) > 1:
+        last_color = list(colors[-1])
+        darken_factor = 0.8
+        for i in range(3):
+            last_color[i] *= darken_factor
+        colors[-1] = tuple(last_color)
 
     # Plot data
     if metric_type == 'bcor':
         for i, label in enumerate(labels):
-            ax.plot(lead_times[i], metric_data[i], color=colors[i], label=label)
+            ax.plot(lead_times[i], metric_data[i], color=colors[i], label=label, linewidth=2)
     elif metric_type == 'bmse':
         if combined or (bmsea is None and bmsep is None):
             # Plot combined BMSE
             for i, label in enumerate(labels):
-                ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle='-', label=label)
+                ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle='-', label=label, linewidth=2)
         else:
             # Plot separate amplitude and phase errors
             assert bmsea is not None and bmsep is not None, 'Must provide bmsea and bmsep for non-combined BMSE plot'
             for i, label in enumerate(labels):
-                ax.plot(lead_times[i], bmsea[i], color=colors[i], linestyle='-', label=f'{label} (Amplitude)')
-                ax.plot(lead_times[i], bmsep[i], color=colors[i], linestyle='--', label=f'{label} (Phase)')
+                ax.plot(lead_times[i], bmsea[i], color=colors[i], linestyle='-', label=f'{label} (Amplitude)', linewidth=2)
+                ax.plot(lead_times[i], bmsep[i], color=colors[i], linestyle='--', label=f'{label} (Phase)', linewidth=2)
 
     # Add threshold line if specified
     if threshold is not None:
@@ -645,7 +652,7 @@ def lead_time_bcor_bmse_plot(
     plt.tight_layout()
 
     if output_filename:
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
         plt.close()
 
     return fig, (ax1, ax2)
@@ -715,7 +722,7 @@ def lead_time_bias_plot(
     plt.tight_layout()
 
     if output_filename:
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
         plt.close()
 
     return fig, (ax1, ax2)
@@ -790,14 +797,21 @@ def lead_time_bias_subplot(
 
     # Generate colors
     colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
+    # If using cividis and more than one label, adjust the last color to be slightly darker
+    if colormap == "cividis" and len(labels) > 1:
+        last_color = list(colors[-1])
+        darken_factor = 0.8
+        for i in range(3):
+            last_color[i] *= darken_factor
+        colors[-1] = tuple(last_color)
 
     # Plot data
     for i, label in enumerate(labels):
-        ax.plot(lead_times[i], bias_data[i], color=colors[i], label=label)
+        ax.plot(lead_times[i], bias_data[i], color=colors[i], label=label, linewidth=2)
 
     # Add zero line if specified
     if show_zero_line:
-        ax.axhline(0, color='black', linestyle='--', linewidth=1)
+        ax.axhline(0, color='black', linestyle='--', linewidth=2)
 
     # Set font family if specified
     if font_family:
@@ -951,7 +965,7 @@ def lead_time_bias_amplitude_grid(
     plt.tight_layout()
 
     if output_filename:
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
         plt.close()
 
     return fig, axes
@@ -1062,7 +1076,7 @@ def lead_time_bcor_bmse_amplitude_grid(
     plt.tight_layout()
 
     if output_filename:
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
         plt.close()
 
     return fig, axes
@@ -1182,7 +1196,7 @@ def bivariate_correlation_by_month_plot(
     plt.tight_layout()
 
     if output_filename:
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
         plt.close()
 
     return fig
@@ -1395,7 +1409,7 @@ def bivariate_correlation_vs_lead_time_heatmap(
             y_low_edge = max(-0.5, min(T_i - 0.5, y_low_edge))
             if ycross > 0:
                 y_low_edge += 1
-            ax.hlines(y_low_edge, c - bar_half_width, c + bar_half_width, colors="k", linewidth=1.3)
+            ax.hlines(y_low_edge, c - bar_half_width, c + bar_half_width, colors="k", linewidth=2)
 
         bar_proxy = Line2D([0], [0], color="k", lw=1.3, label=legend_label_template.format(threshold=threshold))
         # Legend only for rightmost axis
@@ -1461,7 +1475,7 @@ def bivariate_correlation_vs_lead_time_heatmap(
         cbar.ax.invert_yaxis()
 
     if output_filename:
-        fig.savefig(output_filename, dpi=300, bbox_inches="tight")
+        fig.savefig(output_filename, dpi=600, bbox_inches="tight")
 
     return fig, list(axes)
 
@@ -1480,7 +1494,7 @@ def eof_explained_variance_plot(explained_variance, output_filename=None):
     plt.tight_layout()
 
     if output_filename:
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
         plt.close()
     else:
         plt.show()
@@ -1508,7 +1522,7 @@ def eof_pattern_plot(eof_vector, longitudes, variable_labels, eof_number, output
     plt.tight_layout()
 
     if output_filename:
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
         plt.close()
     else:
         plt.show()
