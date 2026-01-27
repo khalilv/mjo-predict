@@ -75,7 +75,6 @@ def main():
     plot_settings = config.get('plot_settings', {})
     font_settings = plot_settings.get('fonts', {})
     titles_settings = plot_settings.get('titles', {})
-    colormap = plot_settings.get('colormap', {})
     ylim_settings = plot_settings.get('ylim', {})
 
     # Build plot kwargs
@@ -87,7 +86,9 @@ def main():
         'fontweight_title': font_settings.get('title_weight', 'bold'),
         'fontweight_title_label': font_settings.get('title_label_weight'),
         'font_family': font_settings.get('family'),
-        'colormap': colormap.get('name', 'viridis'),
+        'colors': plot_settings.get('colors'),
+        'linestyles': plot_settings.get('linestyles'),
+        'linewidth': plot_settings.get('linewidth', 2),
         'ylim_amplitude': ylim_settings.get('amplitude'),
         'ylim_phase': ylim_settings.get('phase'),
     }

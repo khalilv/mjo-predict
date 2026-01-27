@@ -329,7 +329,7 @@ def phase_space_composite_plot(
             angle = (5 + i) * np.pi / 4
             x = np.cos(angle)
             y = np.sin(angle)
-            plt.plot([0, r * x], [0, r * y], color='lightgray', lw=2, zorder=0)
+            plt.plot([0, r * x], [0, r * y], color='lightgray', lw=1.5, zorder=0)
 
         font_props = {'fontsize': fontsize_phase_label, 'ha': 'center', 'va': 'center', 'color': 'gray'}
         if font_family:
@@ -346,7 +346,7 @@ def phase_space_composite_plot(
 
     ax = plt.gca()
     # Draw a unit circle in light gray
-    unit_circle = mpatches.Circle((0, 0), 1, edgecolor='lightgray', facecolor='none', linewidth=2, linestyle='-', zorder=0)
+    unit_circle = mpatches.Circle((0, 0), 1, edgecolor='lightgray', facecolor='none', linewidth=1.5, linestyle='-', zorder=0)
     ax.add_patch(unit_circle)
 
     # Use configured colormap
@@ -372,8 +372,8 @@ def phase_space_composite_plot(
             for lt in range(marker_interval, len(rmm1), marker_interval):
                 plt.plot(rmm1[lt], rmm2[lt], color='lightgray', marker='.')
 
-    plt.axhline(0, color='lightgray', linewidth=2, zorder=0)
-    plt.axvline(0, color='lightgray', linewidth=2, zorder=0)
+    plt.axhline(0, color='lightgray', linewidth=1.5, zorder=0)
+    plt.axvline(0, color='lightgray', linewidth=1.5, zorder=0)
     _draw_phase_wedges()
     _add_region_labels()
 
@@ -446,6 +446,9 @@ def lead_time_skill_subplot(
     fontweight_title_label: Optional[str] = None,
     font_family: Optional[str] = None,
     colormap: str = 'viridis',
+    colors: Optional[List[str]] = None,
+    linestyles: Optional[List[str]] = None,
+    linewidth: float = 2,
     legend_loc: str = 'best',
     # BMSE-specific parameters
     bmsea: Optional[Sequence[np.ndarray]] = None,
@@ -499,37 +502,36 @@ def lead_time_skill_subplot(
 
     # Default threshold style
     if threshold_style is None:
-        threshold_style = {'color': 'black', 'linestyle': '--', 'linewidth': 2}
+        threshold_style = {'color': 'gray', 'linestyle': '--', 'linewidth': 1.5}
 
     # Create axes if not provided
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 5))
 
-    # Generate colors
-    colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
-    # If using cividis and more than one label, adjust the last color to be slightly darker
-    if colormap == "cividis" and len(labels) > 1:
-        last_color = list(colors[-1])
-        darken_factor = 0.8
-        for i in range(3):
-            last_color[i] *= darken_factor
-        colors[-1] = tuple(last_color)
+    # Generate colors if not provided
+    if colors is None:
+        colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
+
+
+    # Use default linestyles if not provided
+    if linestyles is None:
+        linestyles = ['-'] * len(labels)
 
     # Plot data
     if metric_type == 'bcor':
         for i, label in enumerate(labels):
-            ax.plot(lead_times[i], metric_data[i], color=colors[i], label=label, linewidth=2)
+            ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
     elif metric_type == 'bmse':
         if combined or (bmsea is None and bmsep is None):
             # Plot combined BMSE
             for i, label in enumerate(labels):
-                ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle='-', label=label, linewidth=2)
+                ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
         else:
             # Plot separate amplitude and phase errors
             assert bmsea is not None and bmsep is not None, 'Must provide bmsea and bmsep for non-combined BMSE plot'
             for i, label in enumerate(labels):
-                ax.plot(lead_times[i], bmsea[i], color=colors[i], linestyle='-', label=f'{label} (Amplitude)', linewidth=2)
-                ax.plot(lead_times[i], bmsep[i], color=colors[i], linestyle='--', label=f'{label} (Phase)', linewidth=2)
+                ax.plot(lead_times[i], bmsea[i], color=colors[i], linestyle=linestyles[i], label=f'{label} (Amplitude)', linewidth=linewidth)
+                ax.plot(lead_times[i], bmsep[i], color=colors[i], linestyle='--', label=f'{label} (Phase)', linewidth=linewidth)
 
     # Add threshold line if specified
     if threshold is not None:
@@ -693,6 +695,11 @@ def lead_time_bias_plot(
     y_label_amplitude = plot_kwargs.pop('y_label_amplitude', None)
     y_label_phase = plot_kwargs.pop('y_label_phase', None)
 
+    # Extract line style parameters
+    colors = plot_kwargs.pop('colors', None)
+    linestyles = plot_kwargs.pop('linestyles', None)
+    linewidth = plot_kwargs.pop('linewidth', 2)
+
     # Plot amplitude bias
     lead_time_bias_subplot(
         lead_times=lead_times,
@@ -703,6 +710,9 @@ def lead_time_bias_plot(
         title=titles[0],
         ylim=ylim_amplitude,
         y_label=y_label_amplitude,
+        colors=colors,
+        linestyles=linestyles,
+        linewidth=linewidth,
         **plot_kwargs
     )
 
@@ -716,6 +726,9 @@ def lead_time_bias_plot(
         title=titles[1],
         ylim=ylim_phase,
         y_label=y_label_phase,
+        colors=colors,
+        linestyles=linestyles,
+        linewidth=linewidth,
         **plot_kwargs
     )
 
@@ -750,6 +763,9 @@ def lead_time_bias_subplot(
     fontweight_title_label: Optional[str] = None,
     font_family: Optional[str] = None,
     colormap: str = 'viridis',
+    colors: Optional[List[str]] = None,
+    linestyles: Optional[List[str]] = None,
+    linewidth: float = 2,
     legend_loc: str = 'best',
 ) -> plt.Axes:
     """Plot a single bias subplot (amplitude or phase).
@@ -795,23 +811,21 @@ def lead_time_bias_subplot(
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 5))
 
-    # Generate colors
-    colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
-    # If using cividis and more than one label, adjust the last color to be slightly darker
-    if colormap == "cividis" and len(labels) > 1:
-        last_color = list(colors[-1])
-        darken_factor = 0.8
-        for i in range(3):
-            last_color[i] *= darken_factor
-        colors[-1] = tuple(last_color)
+    # Generate colors if not provided
+    if colors is None:
+        colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
+
+    # Use default linestyles if not provided
+    if linestyles is None:
+        linestyles = ['-'] * len(labels)
 
     # Plot data
     for i, label in enumerate(labels):
-        ax.plot(lead_times[i], bias_data[i], color=colors[i], label=label, linewidth=2)
+        ax.plot(lead_times[i], bias_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
 
     # Add zero line if specified
     if show_zero_line:
-        ax.axhline(0, color='black', linestyle='--', linewidth=2)
+        ax.axhline(0, color='gray', linestyle='--', linewidth=1.5, zorder=0)
 
     # Set font family if specified
     if font_family:
@@ -908,6 +922,11 @@ def lead_time_bias_amplitude_grid(
     y_label_amplitude = plot_kwargs.pop('y_label_amplitude', None)
     y_label_phase = plot_kwargs.pop('y_label_phase', None)
 
+    # Extract line style parameters
+    colors = plot_kwargs.pop('colors', None)
+    linestyles = plot_kwargs.pop('linestyles', None)
+    linewidth = plot_kwargs.pop('linewidth', 2)
+
     # Row 1: Low amplitude forecasts
     # Low amplitude - Amplitude bias (top-left)
     lead_time_bias_subplot(
@@ -919,6 +938,9 @@ def lead_time_bias_amplitude_grid(
         title=titles[0],
         ylim=ylim_amplitude,
         y_label=y_label_amplitude,
+        colors=colors,
+        linestyles=linestyles,
+        linewidth=linewidth,
         **plot_kwargs
     )
 
@@ -932,6 +954,9 @@ def lead_time_bias_amplitude_grid(
         title=titles[1],
         ylim=ylim_phase,
         y_label=y_label_phase,
+        colors=colors,
+        linestyles=linestyles,
+        linewidth=linewidth,
         **plot_kwargs
     )
 
@@ -946,6 +971,9 @@ def lead_time_bias_amplitude_grid(
         title=titles[2],
         ylim=ylim_amplitude,
         y_label=y_label_amplitude,
+        colors=colors,
+        linestyles=linestyles,
+        linewidth=linewidth,
         **plot_kwargs
     )
 
@@ -959,6 +987,9 @@ def lead_time_bias_amplitude_grid(
         title=titles[3],
         ylim=ylim_phase,
         y_label=y_label_phase,
+        colors=colors,
+        linestyles=linestyles,
+        linewidth=linewidth,
         **plot_kwargs
     )
 
@@ -1409,7 +1440,7 @@ def bivariate_correlation_vs_lead_time_heatmap(
             y_low_edge = max(-0.5, min(T_i - 0.5, y_low_edge))
             if ycross > 0:
                 y_low_edge += 1
-            ax.hlines(y_low_edge, c - bar_half_width, c + bar_half_width, colors="k", linewidth=2)
+            ax.hlines(y_low_edge, c - bar_half_width, c + bar_half_width, colors="k", linewidth=1.5)
 
         bar_proxy = Line2D([0], [0], color="k", lw=1.3, label=legend_label_template.format(threshold=threshold))
         # Legend only for rightmost axis
@@ -1463,7 +1494,7 @@ def bivariate_correlation_vs_lead_time_heatmap(
             y_low_edge = max(-0.5, min(T_i - 0.5, y_low_edge))
             if ycross > 0:
                 y_low_edge += 1
-            ax.hlines(y_low_edge, -bar_half_width, bar_half_width, colors="k", linewidth=1.3)
+            ax.hlines(y_low_edge, -bar_half_width, bar_half_width, colors="k", linewidth=1.5)
 
         ax.set_xlim(-0.5, 0.5)
         ax.set_ylim(-0.5, T_i - 0.5)

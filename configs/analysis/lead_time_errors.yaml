@@ -46,9 +46,20 @@ plot_settings:
     high_amp_bcor: '(c) BCOR - High Amplitude Forecasts'
     high_amp_bmse: '(d) BMSE - High Amplitude Forecasts'
   
-  # Colormap settings
-  colormap:
-    name: "cividis"
+  # Line style settings
+  colors:
+    - '#17becf'  # Mean bias correction
+    - '#ff7f0e'  # MVLR
+    - '#2ca02c'  # LSTM
+    - '#000000'  # FuXi-S2S
+
+  linestyles:
+    - '-'   # Mean bias correction
+    - '-'  # MVLR
+    - '-'  # LSTM
+    - '--'   # FuXi-S2S
+
+  linewidth: 2
 
   # Y-axis label visibility
   y_labels:
