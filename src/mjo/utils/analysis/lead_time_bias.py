@@ -1,11 +1,14 @@
 import os
-import pandas as pd
 import numpy as np
+import pandas as pd
 import argparse
-from mjo.utils.RMM.io import load_rmm_indices
-from mjo.utils.analysis.utils import load_forecast, load_config
 from tqdm import tqdm
 from typing import List, Optional
+from mjo.utils.RMM.io import load_rmm_indices
+from mjo.utils.analysis.utils import (
+    load_forecast, load_config, compute_bcor,
+    block_bootstrap_per_lead_significance,
+)
 from mjo.utils.plot import lead_time_bias_plot, lead_time_bias_amplitude_grid
 
 
@@ -100,6 +103,16 @@ def main():
     if y_labels.get('hide_phase', False):
         plot_kwargs['y_label_phase'] = ''
 
+    # Bootstrap settings
+    bootstrap_config = config.get('bootstrap', {})
+    bootstrap_enabled = bootstrap_config.get('enabled', False)
+    bootstrap_kwargs = {
+        'n_samples': bootstrap_config.get('n_samples', 1000),
+        'block_size': bootstrap_config.get('block_size', 13),
+        'ci_level': bootstrap_config.get('ci_level', 0.95),
+        'seed': bootstrap_config.get('seed', 42),
+    }
+
     # Load ground truth
     ground_truth = load_rmm_indices(ground_truth_path)
 
@@ -111,6 +124,7 @@ def main():
     high_amp_amplitude_biases = []
     high_amp_phase_biases = []
     max_lead_times = []
+    all_model_dfs = []
 
     # Load FuXi data if configured
     fuxi_ds = None
@@ -129,6 +143,7 @@ def main():
         amplitude_biases.append(amplitude_bias)
         phase_biases.append(phase_bias)
         max_lead_times.append(max_lt)
+        all_model_dfs.append(dfs)
 
         # Compute amplitude-filtered biases if FuXi data is available
         if fuxi_ds is not None:
@@ -158,11 +173,12 @@ def main():
         low_amp_phase_biases.append(phase_bias_low_amp)
         high_amp_amplitude_biases.append(amplitude_bias_high_amp)
         high_amp_phase_biases.append(phase_bias_high_amp)
+        all_model_dfs.append(fuxi_ds)
 
     # Prepare lead times
     lead_times = [np.arange(1, max_lt + 1) for max_lt in max_lead_times]
 
-    # Generate bias plot (1x2)
+    # Generate bias plot (1x2) — without CIs
     lead_time_bias_plot(
         lead_times=lead_times,
         amplitude_bias=amplitude_biases,
@@ -172,6 +188,23 @@ def main():
         titles=(titles_settings.get('amplitude'), titles_settings.get('phase')),
         **plot_kwargs
     )
+
+    # Generate bias plot with significance coloring (no CI bands)
+    if bootstrap_enabled and all_model_dfs:
+        bias_significance = block_bootstrap_per_lead_significance(
+            all_model_dfs, max_lead_times, ground_truth, compute_bcor,
+            higher_is_better=True, **bootstrap_kwargs
+        )
+        lead_time_bias_plot(
+            lead_times=lead_times,
+            amplitude_bias=amplitude_biases,
+            phase_bias=phase_biases,
+            labels=plot_labels,
+            output_filename=os.path.join(output_dir, 'lead_time_bias_ci.png'),
+            titles=(titles_settings.get('amplitude'), titles_settings.get('phase')),
+            significance=bias_significance,
+            **plot_kwargs
+        )
 
     # Generate amplitude-filtered plots (2x2 grid) if FuXi data is available
     if fuxi_ds is not None:

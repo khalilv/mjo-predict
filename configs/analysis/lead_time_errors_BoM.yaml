@@ -65,3 +65,10 @@ plot_settings:
   y_labels:
     hide_bcor: true
     hide_bmse: true
+
+bootstrap:
+  enabled: true
+  n_samples: 1000      
+  block_size: 1       
+  ci_level: 0.95        
+  seed: 42  

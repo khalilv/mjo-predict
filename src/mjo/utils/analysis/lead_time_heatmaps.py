@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from datetime import timedelta
-from mjo.utils.analysis.utils import load_forecast, load_config, compute_bcor
+from mjo.utils.analysis.utils import load_forecast, load_config, compute_bcor, block_bootstrap_crossing
 from mjo.utils.RMM.io import load_rmm_indices
 from typing import List, Callable
 from mjo.utils.plot import (
@@ -111,6 +111,16 @@ def main() -> None:
     )
     lookback_array = np.array(lookback_names)
 
+    # Bootstrap settings
+    bootstrap_config = config.get('bootstrap', {})
+    bootstrap_enabled = bootstrap_config.get('enabled', False)
+    bootstrap_kwargs = {
+        'n_samples': bootstrap_config.get('n_samples', 1000),
+        'block_size': bootstrap_config.get('block_size', 13),
+        'ci_level': bootstrap_config.get('ci_level', 0.95),
+        'seed': bootstrap_config.get('seed', 42),
+    }
+
     os.makedirs(output_dir, exist_ok=True)
 
     ground_truth = load_rmm_indices(ground_truth_path)
@@ -118,7 +128,13 @@ def main() -> None:
     correlations = []
     event_correlations = []
     max_lead_times = []
+    crossing_ci_lower_list = []
+    crossing_ci_upper_list = []
+    crossing_ci_lower_events_list = []
+    crossing_ci_upper_events_list = []
 
+    # Store loaded dataframes for bootstrap reuse
+    all_dfs = []
 
     for predict_dir in forecast_dirs_flat:
         dfs, max_lt, date_strs = load_forecast(predict_dir, start_date, end_date)
@@ -127,6 +143,25 @@ def main() -> None:
         correlations.append(bcor)
         max_lead_times.append(max_lt)
         event_correlations.append(bcor_events)
+        all_dfs.append(dfs)
+
+        if bootstrap_enabled:
+            ci_lo, ci_hi = block_bootstrap_crossing(
+                dfs, max_lt, ground_truth, compute_bcor,
+                threshold=config.get('plot_settings', {}).get('threshold', 0.5),
+                **bootstrap_kwargs
+            )
+            crossing_ci_lower_list.append(ci_lo)
+            crossing_ci_upper_list.append(ci_hi)
+
+            ci_lo_ev, ci_hi_ev = block_bootstrap_crossing(
+                dfs, max_lt, ground_truth, compute_bcor,
+                threshold=config.get('plot_settings', {}).get('threshold', 0.5),
+                filter_low_amp_init=True,
+                **bootstrap_kwargs
+            )
+            crossing_ci_lower_events_list.append(ci_lo_ev)
+            crossing_ci_upper_events_list.append(ci_hi_ev)
 
     # Validate all forecasts have the same lead time
     assert len(set(max_lead_times)) == 1, f"All forecasts must have the same lead time length, found: {set(max_lead_times)}"
@@ -135,6 +170,24 @@ def main() -> None:
     fuxi_ds, fuxi_max_lt, _ = load_forecast(fuxi_path, start_date, end_date, member='mean')
     bcor_fuxi = compute_metric_across_leads(fuxi_ds, fuxi_max_lt, ground_truth, compute_bcor)
     bcor_fuxi_events = compute_metric_across_leads(fuxi_ds, fuxi_max_lt, ground_truth, compute_bcor, filter_low_amp_init=True)
+
+    fuxi_crossing_ci = None
+    fuxi_crossing_ci_events = None
+    if bootstrap_enabled:
+        fuxi_ci_lo, fuxi_ci_hi = block_bootstrap_crossing(
+            fuxi_ds, fuxi_max_lt, ground_truth, compute_bcor,
+            threshold=config.get('plot_settings', {}).get('threshold', 0.5),
+            **bootstrap_kwargs
+        )
+        fuxi_crossing_ci = (fuxi_ci_lo, fuxi_ci_hi)
+
+        fuxi_ci_lo_ev, fuxi_ci_hi_ev = block_bootstrap_crossing(
+            fuxi_ds, fuxi_max_lt, ground_truth, compute_bcor,
+            threshold=config.get('plot_settings', {}).get('threshold', 0.5),
+            filter_low_amp_init=True,
+            **bootstrap_kwargs
+        )
+        fuxi_crossing_ci_events = (fuxi_ci_lo_ev, fuxi_ci_hi_ev)
 
     # Extract plot settings from config
     plot_settings = config.get('plot_settings', {})
@@ -168,31 +221,72 @@ def main() -> None:
         'legend_loc': legend_position,
     }
 
+    # Common heatmap args
+    heatmap_lead_times = np.expand_dims(np.arange(1, max_lt + 1), 0).repeat(num_models, axis=0)
+    heatmap_lookbacks = np.expand_dims(lookback_array, 0).repeat(num_models, axis=0)
+    corr_array = np.array(correlations).reshape(num_models, num_lookbacks, max_lt)
+    event_corr_array = np.array(event_correlations).reshape(num_models, num_lookbacks, max_lt)
+
     # Add FuXi correlations if requested
     if include_fuxi:
         plot_kwargs['fuxi_correlations'] = bcor_fuxi
 
+    # Generate heatmap — without CIs
     bivariate_correlation_vs_lead_time_heatmap(
-        lead_times=np.expand_dims(np.arange(1, max_lt + 1), 0).repeat(num_models, axis=0),
-        lookbacks=np.expand_dims(lookback_array, 0).repeat(num_models, axis=0),
-        correlations=np.array(correlations).reshape(num_models, num_lookbacks, max_lt),
+        lead_times=heatmap_lead_times,
+        lookbacks=heatmap_lookbacks,
+        correlations=corr_array,
         labels=model_names,
         output_filename=os.path.join(output_dir, 'bcor_heatmap.png'),
         **plot_kwargs
     )
 
-    # Update FuXi correlations for events plot if needed
+    # Generate heatmap with crossing CI tails
+    if bootstrap_enabled and crossing_ci_lower_list:
+        ci_plot_kwargs = dict(plot_kwargs)
+        ci_plot_kwargs['crossing_ci_lower'] = np.array(crossing_ci_lower_list).reshape(num_models, num_lookbacks)
+        ci_plot_kwargs['crossing_ci_upper'] = np.array(crossing_ci_upper_list).reshape(num_models, num_lookbacks)
+        if fuxi_crossing_ci is not None:
+            ci_plot_kwargs['fuxi_crossing_ci'] = fuxi_crossing_ci
+
+        bivariate_correlation_vs_lead_time_heatmap(
+            lead_times=heatmap_lead_times,
+            lookbacks=heatmap_lookbacks,
+            correlations=corr_array,
+            labels=model_names,
+            output_filename=os.path.join(output_dir, 'bcor_heatmap_ci.png'),
+            **ci_plot_kwargs
+        )
+
+    # Events heatmap — without CIs
     if include_fuxi:
         plot_kwargs['fuxi_correlations'] = bcor_fuxi_events
 
     bivariate_correlation_vs_lead_time_heatmap(
-        lead_times=np.expand_dims(np.arange(1, max_lt + 1), 0).repeat(num_models, axis=0),
-        lookbacks=np.expand_dims(lookback_array, 0).repeat(num_models, axis=0),
-        correlations=np.array(event_correlations).reshape(num_models, num_lookbacks, max_lt),
+        lead_times=heatmap_lead_times,
+        lookbacks=heatmap_lookbacks,
+        correlations=event_corr_array,
         labels=model_names,
         output_filename=os.path.join(output_dir, 'bcor_high_amp_events_heatmap.png'),
         **plot_kwargs
     )
+
+    # Events heatmap with crossing CI tails
+    if bootstrap_enabled and crossing_ci_lower_events_list:
+        ci_plot_kwargs = dict(plot_kwargs)
+        ci_plot_kwargs['crossing_ci_lower'] = np.array(crossing_ci_lower_events_list).reshape(num_models, num_lookbacks)
+        ci_plot_kwargs['crossing_ci_upper'] = np.array(crossing_ci_upper_events_list).reshape(num_models, num_lookbacks)
+        if fuxi_crossing_ci_events is not None:
+            ci_plot_kwargs['fuxi_crossing_ci'] = fuxi_crossing_ci_events
+
+        bivariate_correlation_vs_lead_time_heatmap(
+            lead_times=heatmap_lead_times,
+            lookbacks=heatmap_lookbacks,
+            correlations=event_corr_array,
+            labels=model_names,
+            output_filename=os.path.join(output_dir, 'bcor_high_amp_events_heatmap_ci.png'),
+            **ci_plot_kwargs
+        )
 
 if __name__ == "__main__":
     main()

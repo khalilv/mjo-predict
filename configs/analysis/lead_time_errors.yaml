@@ -25,6 +25,13 @@ plot_labels:
 # Whether to print relative improvement tables
 print_tables: true
 
+bootstrap:
+  enabled: true
+  n_samples: 1000      
+  block_size: 1       
+  ci_level: 0.95        
+  seed: 42  
+  
 # Plot settings
 plot_settings:
   # Font sizes and styles

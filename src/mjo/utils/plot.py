@@ -454,6 +454,12 @@ def lead_time_skill_subplot(
     bmsea: Optional[Sequence[np.ndarray]] = None,
     bmsep: Optional[Sequence[np.ndarray]] = None,
     combined: bool = False,
+    # Bootstrap CI parameters
+    ci_lower: Optional[Sequence[np.ndarray]] = None,
+    ci_upper: Optional[Sequence[np.ndarray]] = None,
+    ci_alpha: float = 0.15,
+    # Significance coloring: True at lead times where improvement is significant
+    significance: Optional[List[np.ndarray]] = None,
 ) -> plt.Axes:
     """Unified plotting function for lead time metrics (BCOR or BMSE).
 
@@ -478,6 +484,9 @@ def lead_time_skill_subplot(
         bmsea: BMSE amplitude errors (for bmse type with combined=False)
         bmsep: BMSE phase errors (for bmse type with combined=False)
         combined: Whether to plot combined BMSE (for bmse type)
+        ci_lower: Lower CI bounds per model (same shape as metric_data)
+        ci_upper: Upper CI bounds per model (same shape as metric_data)
+        ci_alpha: Transparency for CI shading (default 0.15)
 
     Returns:
         Matplotlib axes object
@@ -512,22 +521,44 @@ def lead_time_skill_subplot(
     if colors is None:
         colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
 
-
     # Use default linestyles if not provided
     if linestyles is None:
         linestyles = ['-'] * len(labels)
 
+    has_ci = ci_lower is not None and ci_upper is not None
+    has_sig = significance is not None
+
+    def _plot_with_significance(ax, x, y, color, linestyle, label, linewidth, sig_mask):
+        """Plot a line with full opacity where significant, low alpha where not."""
+        nonsig_alpha = 0.25
+        # Draw full line at low alpha as base (no label — legend handled separately)
+        ax.plot(x, y, color=color, linestyle=linestyle, linewidth=linewidth, alpha=nonsig_alpha)
+        # Overdraw significant segments at full opacity
+        if sig_mask.any():
+            y_sig = np.where(sig_mask, y, np.nan)
+            ax.plot(x, y_sig, color=color, linestyle=linestyle, linewidth=linewidth, alpha=1.0)
+        # Add a full-opacity proxy for the legend
+        ax.plot([], [], color=color, linestyle=linestyle, linewidth=linewidth, alpha=1.0, label=label)
+
     # Plot data
     if metric_type == 'bcor':
         for i, label in enumerate(labels):
-            ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
+            if has_sig and i < len(significance):
+                _plot_with_significance(ax, lead_times[i], metric_data[i], colors[i], linestyles[i], label, linewidth, significance[i])
+            else:
+                ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
+            if has_ci:
+                ax.fill_between(lead_times[i], ci_lower[i], ci_upper[i], color=colors[i], alpha=ci_alpha)
     elif metric_type == 'bmse':
         if combined or (bmsea is None and bmsep is None):
-            # Plot combined BMSE
             for i, label in enumerate(labels):
-                ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
+                if has_sig and i < len(significance):
+                    _plot_with_significance(ax, lead_times[i], metric_data[i], colors[i], linestyles[i], label, linewidth, significance[i])
+                else:
+                    ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
+                if has_ci:
+                    ax.fill_between(lead_times[i], ci_lower[i], ci_upper[i], color=colors[i], alpha=ci_alpha)
         else:
-            # Plot separate amplitude and phase errors
             assert bmsea is not None and bmsep is not None, 'Must provide bmsea and bmsep for non-combined BMSE plot'
             for i, label in enumerate(labels):
                 ax.plot(lead_times[i], bmsea[i], color=colors[i], linestyle=linestyles[i], label=f'{label} (Amplitude)', linewidth=linewidth)
@@ -599,6 +630,11 @@ def lead_time_bcor_bmse_plot(
     titles: Optional[Tuple[Optional[str], Optional[str]]] = (None, None),
     combined_bmse: bool = True,
     figsize: Tuple[float, float] = (16, 5),
+    bcor_ci_lower: Optional[Sequence[np.ndarray]] = None,
+    bcor_ci_upper: Optional[Sequence[np.ndarray]] = None,
+    bmse_ci_lower: Optional[Sequence[np.ndarray]] = None,
+    bmse_ci_upper: Optional[Sequence[np.ndarray]] = None,
+    significance: Optional[List[np.ndarray]] = None,
     **plot_kwargs
 ) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
     """Create side-by-side BCOR and BMSE plots.
@@ -613,7 +649,12 @@ def lead_time_bcor_bmse_plot(
         titles: Tuple of (bcor_title, bmse_title)
         combined_bmse: Whether to plot combined BMSE
         figsize: Figure size
-        **plot_kwargs: Additional kwargs passed to lead_time_metric_plot
+        bcor_ci_lower: Lower CI bounds for BCOR per model
+        bcor_ci_upper: Upper CI bounds for BCOR per model
+        bmse_ci_lower: Lower CI bounds for combined BMSE per model
+        bmse_ci_upper: Upper CI bounds for combined BMSE per model
+        significance: List of boolean arrays per model (excluding baseline) for color coding
+        **plot_kwargs: Additional kwargs passed to lead_time_skill_subplot
 
     Returns:
         Figure and tuple of (bcor_ax, bmse_ax)
@@ -634,6 +675,9 @@ def lead_time_bcor_bmse_plot(
         metric_type='bcor',
         ax=ax1,
         title=titles[0],
+        ci_lower=bcor_ci_lower,
+        ci_upper=bcor_ci_upper,
+        significance=significance,
         **plot_kwargs
     )
 
@@ -648,6 +692,9 @@ def lead_time_bcor_bmse_plot(
         bmsea=bmsea if not combined_bmse else None,
         bmsep=bmsep if not combined_bmse else None,
         combined=combined_bmse,
+        ci_lower=bmse_ci_lower,
+        ci_upper=bmse_ci_upper,
+        significance=significance,
         **plot_kwargs
     )
 
@@ -669,6 +716,11 @@ def lead_time_bias_plot(
     *,
     titles: Optional[Tuple[Optional[str], Optional[str]]] = (None, None),
     figsize: Tuple[float, float] = (16, 5),
+    amplitude_ci_lower: Optional[Sequence[np.ndarray]] = None,
+    amplitude_ci_upper: Optional[Sequence[np.ndarray]] = None,
+    phase_ci_lower: Optional[Sequence[np.ndarray]] = None,
+    phase_ci_upper: Optional[Sequence[np.ndarray]] = None,
+    significance: Optional[List[np.ndarray]] = None,
     **plot_kwargs
 ) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
     """Create side-by-side amplitude and phase bias plots.
@@ -681,6 +733,11 @@ def lead_time_bias_plot(
         output_filename: Path to save figure
         titles: Tuple of (amplitude_title, phase_title)
         figsize: Figure size
+        amplitude_ci_lower: Lower CI bounds for amplitude bias per model
+        amplitude_ci_upper: Upper CI bounds for amplitude bias per model
+        phase_ci_lower: Lower CI bounds for phase bias per model
+        phase_ci_upper: Upper CI bounds for phase bias per model
+        significance: List of boolean arrays per model for color coding
         **plot_kwargs: Additional kwargs passed to lead_time_bias_subplot
                        (can include ylim_amplitude and ylim_phase for separate y-limits)
 
@@ -713,6 +770,9 @@ def lead_time_bias_plot(
         colors=colors,
         linestyles=linestyles,
         linewidth=linewidth,
+        ci_lower=amplitude_ci_lower,
+        ci_upper=amplitude_ci_upper,
+        significance=significance,
         **plot_kwargs
     )
 
@@ -729,6 +789,9 @@ def lead_time_bias_plot(
         colors=colors,
         linestyles=linestyles,
         linewidth=linewidth,
+        ci_lower=phase_ci_lower,
+        ci_upper=phase_ci_upper,
+        significance=significance,
         **plot_kwargs
     )
 
@@ -767,6 +830,10 @@ def lead_time_bias_subplot(
     linestyles: Optional[List[str]] = None,
     linewidth: float = 2,
     legend_loc: str = 'best',
+    ci_lower: Optional[Sequence[np.ndarray]] = None,
+    ci_upper: Optional[Sequence[np.ndarray]] = None,
+    ci_alpha: float = 0.15,
+    significance: Optional[List[np.ndarray]] = None,
 ) -> plt.Axes:
     """Plot a single bias subplot (amplitude or phase).
 
@@ -819,9 +886,26 @@ def lead_time_bias_subplot(
     if linestyles is None:
         linestyles = ['-'] * len(labels)
 
+    has_ci = ci_lower is not None and ci_upper is not None
+    has_sig = significance is not None
+
+    nonsig_alpha = 0.25
+
     # Plot data
     for i, label in enumerate(labels):
-        ax.plot(lead_times[i], bias_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
+        if has_sig and i < len(significance):
+            # Full line at low alpha as base (no label)
+            ax.plot(lead_times[i], bias_data[i], color=colors[i], linestyle=linestyles[i], linewidth=linewidth, alpha=nonsig_alpha)
+            # Overdraw significant segments at full opacity
+            if significance[i].any():
+                y_sig = np.where(significance[i], bias_data[i], np.nan)
+                ax.plot(lead_times[i], y_sig, color=colors[i], linestyle=linestyles[i], linewidth=linewidth, alpha=1.0)
+            # Full-opacity legend proxy
+            ax.plot([], [], color=colors[i], linestyle=linestyles[i], linewidth=linewidth, alpha=1.0, label=label)
+        else:
+            ax.plot(lead_times[i], bias_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
+        if has_ci:
+            ax.fill_between(lead_times[i], ci_lower[i], ci_upper[i], color=colors[i], alpha=ci_alpha)
 
     # Add zero line if specified
     if show_zero_line:
@@ -1016,6 +1100,8 @@ def lead_time_bcor_bmse_amplitude_grid(
     titles: Optional[Tuple[Optional[str], ...]] = (None, None, None, None),
     combined_bmse: bool = True,
     figsize: Tuple[float, float] = (16, 10),
+    low_amp_significance: Optional[List[np.ndarray]] = None,
+    high_amp_significance: Optional[List[np.ndarray]] = None,
     **plot_kwargs
 ) -> Tuple[plt.Figure, np.ndarray]:
     """Create 2x2 grid of amplitude-filtered BCOR and BMSE plots.
@@ -1053,7 +1139,6 @@ def lead_time_bcor_bmse_amplitude_grid(
         high_bmse_combined = None
 
     # Row 1: Low amplitude
-    # Low amplitude BCOR (top-left)
     lead_time_skill_subplot(
         lead_times=lead_times,
         metric_data=low_amp_correlations,
@@ -1061,10 +1146,9 @@ def lead_time_bcor_bmse_amplitude_grid(
         metric_type='bcor',
         ax=axes[0, 0],
         title=titles[0],
+        significance=low_amp_significance,
         **plot_kwargs
     )
-
-    # Low amplitude BMSE (top-right)
     lead_time_skill_subplot(
         lead_times=lead_times,
         metric_data=low_bmse_combined if combined_bmse else low_amp_bmsea,
@@ -1075,11 +1159,11 @@ def lead_time_bcor_bmse_amplitude_grid(
         bmsea=low_amp_bmsea if not combined_bmse else None,
         bmsep=low_amp_bmsep if not combined_bmse else None,
         combined=combined_bmse,
+        significance=low_amp_significance,
         **plot_kwargs
     )
 
     # Row 2: High amplitude
-    # High amplitude BCOR (bottom-left)
     lead_time_skill_subplot(
         lead_times=lead_times,
         metric_data=high_amp_correlations,
@@ -1087,10 +1171,9 @@ def lead_time_bcor_bmse_amplitude_grid(
         metric_type='bcor',
         ax=axes[1, 0],
         title=titles[2],
+        significance=high_amp_significance,
         **plot_kwargs
     )
-
-    # High amplitude BMSE (bottom-right)
     lead_time_skill_subplot(
         lead_times=lead_times,
         metric_data=high_bmse_combined if combined_bmse else high_amp_bmsea,
@@ -1101,6 +1184,7 @@ def lead_time_bcor_bmse_amplitude_grid(
         bmsea=high_amp_bmsea if not combined_bmse else None,
         bmsep=high_amp_bmsep if not combined_bmse else None,
         combined=combined_bmse,
+        significance=high_amp_significance,
         **plot_kwargs
     )
 
@@ -1242,6 +1326,10 @@ def bivariate_correlation_vs_lead_time_heatmap(
     threshold: float = 0.5,
     bar_half_width: float = 0.35,  # half the horizontal length of each bar (x-index units)
     fuxi_correlations: Optional[np.ndarray] = None,        # (T_i,) or None
+    # Bootstrap crossing CI parameters
+    crossing_ci_lower: Optional[np.ndarray] = None,        # (N, L_i) lower CI for crossing index
+    crossing_ci_upper: Optional[np.ndarray] = None,        # (N, L_i) upper CI for crossing index
+    fuxi_crossing_ci: Optional[Tuple[float, float]] = None,  # (lower, upper) for FuXi crossing
     # Font sizes
     fontsize_title: int = 14,
     fontsize_axis_label: int = 12,
@@ -1355,6 +1443,14 @@ def bivariate_correlation_vs_lead_time_heatmap(
         model_axes = list(range(num_panels))
         fuxi_axis = None
 
+    def _crossing_to_y(val, T):
+        """Convert a crossing index to a y-axis position."""
+        y = np.floor(val) - 0.5
+        y = max(-0.5, min(T - 0.5, y))
+        if val > 0:
+            y += 1
+        return y
+
     current_model = 0
     for i in range(num_panels):
         if has_fuxi and i == fuxi_axis:
@@ -1432,15 +1528,31 @@ def bivariate_correlation_vs_lead_time_heatmap(
                 title_kwargs['family'] = font_family
             ax.set_title(lab, **title_kwargs)
 
+        has_crossing_ci = crossing_ci_lower is not None and crossing_ci_upper is not None
+
         for c in range(L_i):
             ycross = first_crossing_yindex(A[:, c], thr=threshold)
-            if np.isnan(ycross):
-                continue
-            y_low_edge = np.floor(ycross) - 0.5
-            y_low_edge = max(-0.5, min(T_i - 0.5, y_low_edge))
-            if ycross > 0:
-                y_low_edge += 1
-            ax.hlines(y_low_edge, c - bar_half_width, c + bar_half_width, colors="k", linewidth=1.5)
+
+            # Draw threshold bar only if the point estimate actually crosses
+            if not np.isnan(ycross):
+                y_bar = _crossing_to_y(ycross, T_i)
+                ax.hlines(y_bar, c - bar_half_width, c + bar_half_width, colors="k", linewidth=1.5)
+
+            # Draw CI tails even if point estimate doesn't cross
+            if has_crossing_ci:
+                ci_lo = crossing_ci_lower[current_model - 1, c]
+                ci_hi = crossing_ci_upper[current_model - 1, c]
+                if not (np.isnan(ci_lo) or np.isnan(ci_hi)):
+                    y_ci_lo = _crossing_to_y(ci_lo, T_i)
+                    y_ci_hi = _crossing_to_y(ci_hi, T_i)
+                    if abs(y_ci_hi - y_ci_lo) > 0.01:
+                        ax.vlines(c, y_ci_lo, y_ci_hi, colors="k", linewidth=1.0)
+                        cap_width = bar_half_width * 0.4
+                        # Skip caps at plot edges so they don't look clipped
+                        if y_ci_lo > -0.4:
+                            ax.hlines(y_ci_lo, c - cap_width, c + cap_width, colors="k", linewidth=1.0)
+                        if y_ci_hi < T_i - 0.6:
+                            ax.hlines(y_ci_hi, c - cap_width, c + cap_width, colors="k", linewidth=1.0)
 
         bar_proxy = Line2D([0], [0], color="k", lw=1.3, label=legend_label_template.format(threshold=threshold))
         # Legend only for rightmost axis
@@ -1490,11 +1602,21 @@ def bivariate_correlation_vs_lead_time_heatmap(
 
         ycross = first_crossing_yindex(fuxi_A[:, 0], thr=threshold)
         if not np.isnan(ycross):
-            y_low_edge = np.floor(ycross) - 0.5
-            y_low_edge = max(-0.5, min(T_i - 0.5, y_low_edge))
-            if ycross > 0:
-                y_low_edge += 1
-            ax.hlines(y_low_edge, -bar_half_width, bar_half_width, colors="k", linewidth=1.5)
+            y_bar = _crossing_to_y(ycross, T_i)
+            ax.hlines(y_bar, -bar_half_width, bar_half_width, colors="k", linewidth=1.5)
+
+        if fuxi_crossing_ci is not None:
+            ci_lo, ci_hi = fuxi_crossing_ci
+            if not (np.isnan(ci_lo) or np.isnan(ci_hi)):
+                y_ci_lo = _crossing_to_y(ci_lo, T_i)
+                y_ci_hi = _crossing_to_y(ci_hi, T_i)
+                if abs(y_ci_hi - y_ci_lo) > 0.01:
+                    ax.vlines(0, y_ci_lo, y_ci_hi, colors="k", linewidth=1.0)
+                    cap_width = bar_half_width * 0.4
+                    if y_ci_lo > -0.4:
+                        ax.hlines(y_ci_lo, -cap_width, cap_width, colors="k", linewidth=1.0)
+                    if y_ci_hi < T_i - 0.6:
+                        ax.hlines(y_ci_hi, -cap_width, cap_width, colors="k", linewidth=1.0)
 
         ax.set_xlim(-0.5, 0.5)
         ax.set_ylim(-0.5, T_i - 0.5)
