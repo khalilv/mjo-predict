@@ -6,7 +6,7 @@ import numpy as np
 import xesmf as xe
 from tqdm import tqdm
 from mjo.utils.ROMI.eof import fill_missing_days
-from mjo.utils.RMM.io import save_rmm_indices
+from mjo.utils.ROMI.io import save_romi_indices
 from mjo.utils.RMM.FuXi.utils import walk_to_forecast_dir
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS.*")
@@ -135,9 +135,9 @@ def main():
         romi1 = np.einsum('tp,tp->t', smoothed, day_eofs[:, 0, :]) / sigma
         romi2 = np.einsum('tp,tp->t', smoothed, day_eofs[:, 1, :]) / sigma
 
-        save_rmm_indices(
-            time=fc_times, RMM1=romi1, RMM2=romi2,
-            filename=out_path, method_str='FuXi',
+        save_romi_indices(
+            time=fc_times, ROMI1=romi1, ROMI2=romi2,
+            filename=out_path, method_str='FuXi_ROMI_mean',
         )
 
 

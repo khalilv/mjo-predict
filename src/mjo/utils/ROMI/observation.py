@@ -4,7 +4,7 @@ import xarray as xr
 import xesmf as xe
 
 from mjo.utils.ROMI.eof import fill_missing_days
-from mjo.utils.RMM.io import save_rmm_indices
+from mjo.utils.ROMI.io import save_romi_indices
 
 
 def main():
@@ -85,8 +85,8 @@ def main():
     romi2 = np.einsum('tp,tp->t', smoothed, day_eofs[:, 1, :]) / sigma
     print(f'ROMI1 std: {romi1.std():.3f}, ROMI2 std: {romi2.std():.3f}')
 
-    save_rmm_indices(
-        time=times, RMM1=romi1, RMM2=romi2,
+    save_romi_indices(
+        time=times, ROMI1=romi1, ROMI2=romi2,
         filename=os.path.join(save_dir, 'romi.txt'),
         method_str='Kiladis14_ROMI:_OLR_only',
     )
