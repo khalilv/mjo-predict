@@ -1,122 +1,146 @@
 import os
 import argparse
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from mjo.utils.RMM.io import load_rmm_indices
 from mjo.utils.analysis.utils import load_config
 from mjo.utils.plot import phase_space_plot
 
 
-def load_trajectory_data(
+def to_rmm_convention(df):
+    """Apply NOAA OMI/ROMI -> RMM-convention mapping: (PC1, PC2) -> (PC2, -PC1).
+
+    Per NOAA PSL: to compare OMI/ROMI directly with RMM, swap PC ordering and
+    flip the sign of (original) PC1 so OMI(PC2) is analogous to RMM(PC1) and
+    -OMI(PC1) is analogous to RMM(PC2). Same applies to ROMI.
+    """
+    df = df.copy()
+    new_rmm1 = df['RMM2'].values
+    new_rmm2 = -df['RMM1'].values
+    df['RMM1'] = new_rmm1
+    df['RMM2'] = new_rmm2
+    return df
+
+
+def _slice_to_window(df, start, end, source):
+    """Slice df to [start, end] inclusive and assert no NaNs."""
+    sliced = df.loc[start:end]
+    assert not sliced.isnull().values.any(), f"NaNs found in slice from {source}"
+    return sliced
+
+
+def load_trajectories(
     start_date: str,
     trajectory_length: int,
-    forecast_dirs: List[str],
-    ensemble_dirs: List[Dict[str, Any]],
-    ground_truth_path: str,
-    bom_path: Optional[str] = None,
-    ecmwf_path: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Load and slice trajectory data for phase space plotting."""
+    references: List[Dict[str, Any]],
+    forecasts: List[Dict[str, Any]],
+    ensembles: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Load all phase-space trajectories from the unified config sections.
+
+    references: continuous time-series files sliced by trajectory window. Each
+        entry must have {path, label, color, linestyle}; one entry must have
+        primary: true (used for the date alignment reference).
+    forecasts: per-init-date single-file forecasts at <path>/<init_date>.txt.
+    ensembles: per-init-date member directories at <path>/<init_date>/<member>.txt.
+        Each entry has {path, label, color, linestyle, members: [...]}.
+
+    Any entry may set transform_to_rmm: true to apply the OMI/ROMI -> RMM swap.
+    """
     start_date_dt = datetime.strptime(start_date, "%Y-%m-%d")
     end_date_dt = start_date_dt + timedelta(days=trajectory_length - 1)
-    init_date = str(start_date_dt - timedelta(days=1)).split(' ')[0]
+    init_date = (start_date_dt - timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # Load ground truth
-    gt_df = load_rmm_indices(ground_truth_path)
-    gt_slice = gt_df.loc[start_date_dt:end_date_dt]
-    assert not gt_slice.isnull().values.any(), "NaNs found in ground truth dataframe slice"
+    primaries = [r for r in references if r.get('primary')]
+    assert len(primaries) == 1, \
+        f"Exactly one reference must have primary: true (found {len(primaries)})"
+    primary_path = primaries[0]['path']
 
-    # Load BoM if provided
-    bom_rmm1, bom_rmm2 = None, None
-    if bom_path:
-        bom_df = load_rmm_indices(bom_path)
-        bom_slice = bom_df.loc[start_date_dt:end_date_dt]
-        assert not bom_slice.isnull().values.any(), "NaNs found in BoM dataframe slice"
-        assert (gt_slice.index == bom_slice.index).all(), \
-            "Ground truth and BoM dataframe slices do not contain the same dates"
-        bom_rmm1 = bom_slice.RMM1.values
-        bom_rmm2 = bom_slice.RMM2.values
+    primary_df = load_rmm_indices(primary_path)
+    if primaries[0].get('transform_to_rmm'):
+        primary_df = to_rmm_convention(primary_df)
+    primary_slice = _slice_to_window(primary_df, start_date_dt, end_date_dt, primary_path)
 
-    # Load ECMWF if provided
-    ecmwf_rmm1, ecmwf_rmm2, ecmwf_timestamps = None, None, None
-    if ecmwf_path:
-        ecmwf_df = load_rmm_indices(ecmwf_path)
-        ecmwf_slice = ecmwf_df[:end_date_dt]
-        ecmwf_rmm1 = ecmwf_slice.RMM1.values
-        ecmwf_rmm2 = ecmwf_slice.RMM2.values
-        ecmwf_timestamps = ecmwf_slice.index.values
+    trajectories: List[Dict[str, Any]] = []
 
-    # Load forecast data
-    predict_dfs = []
-    labels = []
+    for ref in references:
+        if ref.get('primary'):
+            df_slice = primary_slice
+        else:
+            df = load_rmm_indices(ref['path'])
+            if ref.get('transform_to_rmm'):
+                df = to_rmm_convention(df)
+            df_slice = _slice_to_window(df, start_date_dt, end_date_dt, ref['path'])
+            assert (primary_slice.index == df_slice.index).all(), \
+                f"Reference {ref['path']} dates don't align with primary"
+        trajectories.append({
+            'rmm1': df_slice['RMM1'].values,
+            'rmm2': df_slice['RMM2'].values,
+            'label': ref['label'],
+            'color': ref['color'],
+            'linestyle': ref.get('linestyle', '-'),
+            'alpha': ref.get('alpha', 0.85),
+        })
 
-    for forecast_dir in forecast_dirs:
-        pred_df = load_rmm_indices(os.path.join(forecast_dir, f'{init_date}.txt'))
-        pred_df_slice = pred_df.loc[start_date:end_date_dt]
-        assert not pred_df_slice.isnull().values.any(), \
-            f"NaNs found in predict dataframe slice in {forecast_dir}"
-        assert (gt_slice.index == pred_df_slice.index).all(), \
-            f"Predict dataframe slice from {forecast_dir} and ground truth do not contain the same dates"
-        predict_dfs.append(pred_df_slice)
+    for fc in forecasts:
+        df = load_rmm_indices(os.path.join(fc['path'], f'{init_date}.txt'))
+        if fc.get('transform_to_rmm'):
+            df = to_rmm_convention(df)
+        df_slice = _slice_to_window(df, start_date_dt, end_date_dt, fc['path'])
+        assert (primary_slice.index == df_slice.index).all(), \
+            f"Forecast {fc['path']} dates don't align with primary"
+        trajectories.append({
+            'rmm1': df_slice['RMM1'].values,
+            'rmm2': df_slice['RMM2'].values,
+            'label': fc['label'],
+            'color': fc['color'],
+            'linestyle': fc.get('linestyle', '-'),
+            'alpha': fc.get('alpha', 0.85),
+        })
 
-    # Load ensemble data
-    for ensemble_config in ensemble_dirs:
-        ensemble_dir = ensemble_config['path']
-        ensemble_label = ensemble_config['label']
-        ensemble_members = ensemble_config.get('members', ['mean'])
+    for ens in ensembles:
+        members = ens.get('members', ['mean'])
+        for member in members:
+            df = load_rmm_indices(os.path.join(ens['path'], init_date, f'{member}.txt'))
+            if ens.get('transform_to_rmm'):
+                df = to_rmm_convention(df)
+            df_slice = _slice_to_window(df, start_date_dt, end_date_dt, ens['path'])
+            assert (primary_slice.index == df_slice.index).all(), \
+                f"Ensemble {ens['path']}/{member} dates don't align with primary"
+            label = ens['label'] if len(members) == 1 else f"{ens['label']} {member}"
+            trajectories.append({
+                'rmm1': df_slice['RMM1'].values,
+                'rmm2': df_slice['RMM2'].values,
+                'label': label,
+                'color': ens['color'],
+                'linestyle': ens.get('linestyle', '-'),
+                'alpha': ens.get('alpha', 0.85),
+            })
 
-        for member in ensemble_members:
-            pred_df = load_rmm_indices(os.path.join(ensemble_dir, init_date, f'{member}.txt'))
-            pred_df_slice = pred_df.loc[start_date:end_date_dt]
-            assert not pred_df_slice.isnull().values.any(), \
-                f"NaNs found in predict dataframe slice in {ensemble_dir}"
-            assert (gt_slice.index == pred_df_slice.index).all(), \
-                f"Predict dataframe slice from {ensemble_dir} and ground truth do not contain the same dates"
-            predict_dfs.append(pred_df_slice)
-            labels.append(f'{ensemble_label} {member}')
-
-    return {
-        'predict_dfs': predict_dfs,
-        'labels': labels,
-        'gt_slice': gt_slice,
-        'bom_rmm1': bom_rmm1,
-        'bom_rmm2': bom_rmm2,
-        'ecmwf_rmm1': ecmwf_rmm1,
-        'ecmwf_rmm2': ecmwf_rmm2,
-        'ecmwf_timestamps': ecmwf_timestamps,
-    }
+    return trajectories
 
 
 def main():
     """Main function to generate phase space trajectory plot."""
-    # Parse command line arguments
     parser = argparse.ArgumentParser(description='Generate phase space trajectory plot')
     parser.add_argument('--config', type=str, required=True, help='Path to YAML configuration file')
     args = parser.parse_args()
 
-    # Load configuration
     config = load_config(args.config)
 
-    # Extract configuration
     start_date = config['trajectory']['start_date']
     trajectory_length = config['trajectory']['length']
-    forecast_dirs = config.get('forecast_dirs', [])
-    forecast_labels = config.get('forecast_labels', [])
-    ensemble_dirs = config.get('ensemble_dirs', [])
-    ground_truth_path = config['paths']['ground_truth']
-    bom_path = config['paths'].get('bom')
-    ecmwf_path = config['paths'].get('ecmwf')
+    references = config.get('references', [])
+    forecasts = config.get('forecasts', [])
+    ensembles = config.get('ensembles', [])
     output_dir = config['paths']['output_dir']
     os.makedirs(output_dir, exist_ok=True)
 
-    # Plot settings
     plot_settings = config.get('plot_settings', {})
     font_settings = plot_settings.get('fonts', {})
     axis_settings = plot_settings.get('axis', {})
-    colormap = plot_settings.get('colormap', {})
     title_template = plot_settings.get('title', {}).get('template', '')
 
-    # Build plot kwargs
     plot_kwargs = {
         'fontsize_title': font_settings.get('title', 14),
         'fontsize_axis_label': font_settings.get('axis_label', 12),
@@ -129,42 +153,26 @@ def main():
         'figsize': tuple(plot_settings.get('figsize', [8, 8])),
         'xlim': tuple(axis_settings.get('xlim', [-4, 4])),
         'ylim': tuple(axis_settings.get('ylim', [-4, 4])),
-        'colormap': colormap.get('name', 'tab10'),
         'marker_interval': plot_settings.get('marker_interval', 5),
         'legend_loc': plot_settings.get('legend_loc', 'best'),
     }
 
-    # Load trajectory data
-    data = load_trajectory_data(
+    trajectories = load_trajectories(
         start_date=start_date,
         trajectory_length=trajectory_length,
-        forecast_dirs=forecast_dirs,
-        ensemble_dirs=ensemble_dirs,
-        ground_truth_path=ground_truth_path,
-        bom_path=bom_path,
-        ecmwf_path=ecmwf_path,
+        references=references,
+        forecasts=forecasts,
+        ensembles=ensembles,
     )
 
-    # Generate title from template
     title = title_template.format(
         trajectory_length=trajectory_length,
         start_date=start_date
     ) if title_template else None
 
-    # Generate plot
     output_filename = f'{start_date}.png'
     phase_space_plot(
-        pred_rmm1s=[p.RMM1.values for p in data['predict_dfs']],
-        gt_rmm1=data['gt_slice'].RMM1.values,
-        pred_rmm2s=[p.RMM2.values for p in data['predict_dfs']],
-        gt_rmm2=data['gt_slice'].RMM2.values,
-        gt_label=config.get('gt_label', 'Observed'),
-        labels=forecast_labels + data['labels'],
-        bom_rmm1=data['bom_rmm1'],
-        bom_rmm2=data['bom_rmm2'],
-        ecmwf_rmm1=data['ecmwf_rmm1'],
-        ecmwf_rmm2=data['ecmwf_rmm2'],
-        ecmwf_timestamps=data['ecmwf_timestamps'],
+        trajectories=trajectories,
         title=title,
         output_filename=os.path.join(output_dir, output_filename),
         **plot_kwargs

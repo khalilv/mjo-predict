@@ -3,7 +3,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.lines import Line2D
-from typing import Sequence, Tuple, List, Union, Optional, Literal, Dict
+from typing import Sequence, Tuple, List, Union, Optional, Literal, Dict, Any
 import matplotlib.patches as mpatches
 
 def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplitude, gt_amplitude, pred_label = None, gt_label = None, output_filename = None):
@@ -57,24 +57,13 @@ def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplit
         plt.show()
 
 def phase_space_plot(
-    pred_rmm1s: List[np.ndarray],
-    gt_rmm1: np.ndarray,
-    pred_rmm2s: List[np.ndarray],
-    gt_rmm2: np.ndarray,
-    labels: List[str],
-    gt_label: str,
-    bom_rmm1: Optional[np.ndarray] = None,
-    bom_rmm2: Optional[np.ndarray] = None,
+    trajectories: List[Dict[str, Any]],
     title: Optional[str] = None,
     output_filename: Optional[str] = None,
-    ecmwf_rmm1: Optional[np.ndarray] = None,
-    ecmwf_rmm2: Optional[np.ndarray] = None,
-    ecmwf_timestamps: Optional[np.ndarray] = None,
     *,
     figsize: Tuple[float, float] = (8, 8),
     xlim: Tuple[float, float] = (-4, 4),
     ylim: Tuple[float, float] = (-4, 4),
-    colormap: str = 'tab10',
     fontsize_title: int = 14,
     fontsize_axis_label: int = 12,
     fontsize_region_label: int = 11,
@@ -89,23 +78,14 @@ def phase_space_plot(
     """Create a phase space trajectory plot showing RMM1 vs RMM2.
 
     Args:
-        pred_rmm1s: List of predicted RMM1 arrays
-        gt_rmm1: Ground truth RMM1 array
-        pred_rmm2s: List of predicted RMM2 arrays
-        gt_rmm2: Ground truth RMM2 array
-        labels: Labels for each prediction
-        gt_label: Label for ground truth
-        bom_rmm1: Optional BoM RMM1 array
-        bom_rmm2: Optional BoM RMM2 array
+        trajectories: List of dicts each with required keys 'rmm1', 'rmm2',
+            'label', 'color', 'linestyle' and optional 'alpha' (default 0.85)
+            and 'marker_start' (default True). Drawn in given order.
         title: Plot title
         output_filename: Path to save figure
-        ecmwf_rmm1: Optional ECMWF RMM1 array
-        ecmwf_rmm2: Optional ECMWF RMM2 array
-        ecmwf_timestamps: Optional ECMWF timestamps
         figsize: Figure size
         xlim: X-axis limits
         ylim: Y-axis limits
-        colormap: Colormap name for predictions
         fontsize_title: Font size for title
         fontsize_axis_label: Font size for axis labels
         fontsize_region_label: Font size for region labels
@@ -160,7 +140,6 @@ def phase_space_plot(
             y = max_lim * np.sin(angle)
             plt.text(x, y, label, **font_props)
 
-    assert len(labels) == len(pred_rmm1s), 'Number of labels must match number of prediction sources'
     fig = plt.figure(figsize=figsize)
 
     ax = plt.gca()
@@ -168,31 +147,20 @@ def phase_space_plot(
     unit_circle = mpatches.Circle((0, 0), 1, edgecolor='lightgray', facecolor='none', linewidth=0.8, linestyle='-', zorder=0)
     ax.add_patch(unit_circle)
 
-    # Use configured colormap
-    colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
+    for traj in trajectories:
+        rmm1 = traj['rmm1']
+        rmm2 = traj['rmm2']
+        label = traj['label']
+        color = traj['color']
+        linestyle = traj.get('linestyle', '-')
+        alpha = traj.get('alpha', 0.85)
+        marker_start = traj.get('marker_start', True)
 
-    for i, label in enumerate(labels):
-        plt.plot(pred_rmm1s[i], pred_rmm2s[i], color=colors[i], alpha=0.8, label=label)
-        plt.plot(pred_rmm1s[i][0], pred_rmm2s[i][0], color=colors[i], marker='o')  # start
-        for lt in range(marker_interval, len(pred_rmm1s[i]), marker_interval):
-            plt.plot(pred_rmm1s[i][lt], pred_rmm2s[i][lt], color=colors[i], marker='.')
-
-    if bom_rmm1 is not None and bom_rmm2 is not None:
-        plt.plot(bom_rmm1, bom_rmm2, color='lightgray', linestyle='--', alpha=0.75, label='BoM')
-        plt.plot(bom_rmm1[0], bom_rmm2[0], color='lightgray', marker='o')  # start
-        for lt in range(marker_interval, len(bom_rmm1), marker_interval):
-            plt.plot(bom_rmm1[lt], bom_rmm2[lt], color='lightgray', marker='.')
-
-    if ecmwf_rmm1 is not None and ecmwf_rmm2 is not None:
-        plt.plot(ecmwf_rmm1, ecmwf_rmm2, color='red', alpha=0.8, label='ECMWF')
-        # Start at marker_interval-1 to match original behavior (which started at 4 with interval 5)
-        for lt in range(marker_interval - 1, len(ecmwf_rmm1), marker_interval):
-            plt.plot(ecmwf_rmm1[lt], ecmwf_rmm2[lt], color='red', marker='.')
-
-    plt.plot(gt_rmm1, gt_rmm2, color='black', linestyle='--', alpha=0.75, label=gt_label)
-    plt.plot(gt_rmm1[0], gt_rmm2[0], color='black', marker='o')  # start
-    for lt in range(marker_interval, len(gt_rmm1), marker_interval):
-        plt.plot(gt_rmm1[lt], gt_rmm2[lt], color='black', marker='.')
+        plt.plot(rmm1, rmm2, color=color, linestyle=linestyle, alpha=alpha, label=label)
+        if marker_start and len(rmm1) > 0:
+            plt.plot(rmm1[0], rmm2[0], color=color, marker='o')
+        for lt in range(marker_interval, len(rmm1), marker_interval):
+            plt.plot(rmm1[lt], rmm2[lt], color=color, marker='.')
 
     plt.axhline(0, color='gray', linewidth=0.5)
     plt.axvline(0, color='gray', linewidth=0.5)
