@@ -29,6 +29,18 @@ def _slice_to_window(df, start, end, source):
     return sliced
 
 
+def _trajectory(df_slice, entry, label=None):
+    """Build a phase_space_plot trajectory dict from a sliced RMM frame and its config entry."""
+    return {
+        'rmm1': df_slice['RMM1'].values,
+        'rmm2': df_slice['RMM2'].values,
+        'label': entry['label'] if label is None else label,
+        'color': entry['color'],
+        'linestyle': entry.get('linestyle', '-'),
+        'alpha': entry.get('alpha', 0.85),
+    }
+
+
 def load_trajectories(
     start_date: str,
     trajectory_length: int,
@@ -73,14 +85,7 @@ def load_trajectories(
             df_slice = _slice_to_window(df, start_date_dt, end_date_dt, ref['path'])
             assert (primary_slice.index == df_slice.index).all(), \
                 f"Reference {ref['path']} dates don't align with primary"
-        trajectories.append({
-            'rmm1': df_slice['RMM1'].values,
-            'rmm2': df_slice['RMM2'].values,
-            'label': ref['label'],
-            'color': ref['color'],
-            'linestyle': ref.get('linestyle', '-'),
-            'alpha': ref.get('alpha', 0.85),
-        })
+        trajectories.append(_trajectory(df_slice, ref))
 
     for fc in forecasts:
         df = load_rmm_indices(os.path.join(fc['path'], f'{init_date}.txt'))
@@ -89,14 +94,7 @@ def load_trajectories(
         df_slice = _slice_to_window(df, start_date_dt, end_date_dt, fc['path'])
         assert (primary_slice.index == df_slice.index).all(), \
             f"Forecast {fc['path']} dates don't align with primary"
-        trajectories.append({
-            'rmm1': df_slice['RMM1'].values,
-            'rmm2': df_slice['RMM2'].values,
-            'label': fc['label'],
-            'color': fc['color'],
-            'linestyle': fc.get('linestyle', '-'),
-            'alpha': fc.get('alpha', 0.85),
-        })
+        trajectories.append(_trajectory(df_slice, fc))
 
     for ens in ensembles:
         members = ens.get('members', ['mean'])
@@ -108,20 +106,13 @@ def load_trajectories(
             assert (primary_slice.index == df_slice.index).all(), \
                 f"Ensemble {ens['path']}/{member} dates don't align with primary"
             label = ens['label'] if len(members) == 1 else f"{ens['label']} {member}"
-            trajectories.append({
-                'rmm1': df_slice['RMM1'].values,
-                'rmm2': df_slice['RMM2'].values,
-                'label': label,
-                'color': ens['color'],
-                'linestyle': ens.get('linestyle', '-'),
-                'alpha': ens.get('alpha', 0.85),
-            })
+            trajectories.append(_trajectory(df_slice, ens, label))
 
     return trajectories
 
 
 def main():
-    """Main function to generate phase space trajectory plot."""
+    """Plot observed, reference and forecast phase-space trajectories for one start date."""
     parser = argparse.ArgumentParser(description='Generate phase space trajectory plot')
     parser.add_argument('--config', type=str, required=True, help='Path to YAML configuration file')
     args = parser.parse_args()
@@ -155,6 +146,7 @@ def main():
         'ylim': tuple(axis_settings.get('ylim', [-4, 4])),
         'marker_interval': plot_settings.get('marker_interval', 5),
         'legend_loc': plot_settings.get('legend_loc', 'best'),
+        'legend_order': plot_settings.get('legend_order'),
     }
 
     trajectories = load_trajectories(

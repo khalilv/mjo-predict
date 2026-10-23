@@ -10,14 +10,6 @@ from collections import defaultdict
 from tqdm import tqdm
 from typing import Dict, Optional, Tuple
 
-PHASE_GROUP_MAP = {
-    1: 1, 8: 8,
-    2: 2, 3: 3,
-    4: 4, 5: 5,
-    6: 6, 7: 7
-}
-
-
 def compute_composite_by_phase(
     predict_dir: str,
     gt_df: pd.DataFrame,
@@ -28,7 +20,7 @@ def compute_composite_by_phase(
     end_date: Optional[str] = None,
     offset: int = 0
 ) -> Tuple[Dict[int, Tuple[np.ndarray, np.ndarray]], Dict[int, Tuple[np.ndarray, np.ndarray]]]:
-    """Compute composite trajectories grouped by initialization phase."""
+    """Compute mean predicted and observed trajectories grouped by observed RMM phase on the init date."""
     pred_phase_groups = defaultdict(list)
     gt_phase_groups = defaultdict(list)
 
@@ -62,7 +54,7 @@ def compute_composite_by_phase(
 
         pred_df = load_rmm_indices(file)
 
-        # Apply smoothing if window > 1
+        # Trailing rolling mean; the first window-1 days keep their raw values
         if window > 1:
             pred_df_smoothed = pred_df.rolling(window=window, center=False).mean()
             pred_df_smoothed[:window - 1] = pred_df[:window - 1]
@@ -84,8 +76,8 @@ def compute_composite_by_phase(
         assert (gt_slice.index == pred_df.index).all(), \
             "Ground truth dataframe slice and predict dataframe slice do not contain the same dates"
 
-        pred_phase_groups[PHASE_GROUP_MAP[phase]].append(pred_df[offset:])
-        gt_phase_groups[PHASE_GROUP_MAP[phase]].append(gt_slice[offset:])
+        pred_phase_groups[phase].append(pred_df[offset:])
+        gt_phase_groups[phase].append(gt_slice[offset:])
 
     # Compute composite trajectories by averaging
     pred_composite_trajectories = {}
@@ -100,9 +92,9 @@ def compute_composite_by_phase(
 
     return pred_composite_trajectories, gt_composite_trajectories
 
+
 def main():
-    """Main function to generate phase space composite plot."""
-    # Parse command line arguments
+    """Plot phase-composite trajectories for forecasts, ensembles and optional BoM against observations."""
     parser = argparse.ArgumentParser(description='Generate phase space composite plot')
     parser.add_argument('--config', type=str, required=True, help='Path to YAML configuration file')
     args = parser.parse_args()
@@ -215,7 +207,7 @@ def main():
         end_date=end_date
     ) if title_template else None
 
-    # Generate plot
+    # Observed composite uses the init dates of the first forecast source
     phase_space_composite_plot(
         pred_composites=pred_composites_per_dir,
         gt_composites=gt_composites_per_dir[0] if gt_composites_per_dir else {},

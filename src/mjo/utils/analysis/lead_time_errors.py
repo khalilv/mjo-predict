@@ -6,8 +6,8 @@ from tqdm import tqdm
 from typing import Callable, List, Tuple, Optional
 from mjo.utils.RMM.io import load_rmm_indices
 from mjo.utils.analysis.utils import (
-    load_forecast, load_config, compute_bcor, compute_bmse,
-    compute_bmsea, compute_bmsep,
+    load_forecast, load_config, get_bootstrap_settings, get_line_plot_kwargs,
+    collect_lead_pairs, compute_bcor, compute_bmse, compute_bmsea, compute_bmsep,
     block_bootstrap_paired_improvement,
     block_bootstrap_per_lead_significance, block_bootstrap_skillful_window,
 )
@@ -26,22 +26,10 @@ def compute_metric_across_leads(
     fuxi_ds: Optional[List[pd.DataFrame]] = None,
     filter_type: Optional[str] = None
 ) -> np.ndarray:
-    """Compute a metric (bcor or bmse) across all lead times for forecasts."""
+    """Compute a metric (bcor or bmse) across all lead times; filter_type ('high'/'low') names the FuXi-amplitude regime to EXCLUDE."""
     results = []
     for lt in tqdm(range(max_lt), 'Computing per-lead metric'):
-        preds, truths = [], []
-        for i, df in enumerate(dataframes):
-            if fuxi_ds is not None:
-                fuxi_df = fuxi_ds[i]
-                assert filter_type is not None and filter_type in ['high', 'low'], 'Filter type high or low must be provided for filtering'
-                assert (fuxi_df.index == df.index).all(), 'Found mismatch in dates between FuXi forecast and predictions'
-                forecast_date = df.index[lt]
-                fuxi_amplitude = fuxi_df.loc[forecast_date].amplitude
-                if (filter_type == 'low' and fuxi_amplitude < 1) or (filter_type == 'high' and fuxi_amplitude >= 1):
-                    continue
-            if lt < len(df):
-                preds.append(df.iloc[lt])
-                truths.append(ground_truth_df.loc[df.index[lt]])
+        _, preds, truths = collect_lead_pairs(dataframes, lt, ground_truth_df, fuxi_ds, filter_type, check_dates=True)
         pred_df = pd.DataFrame(preds)
         truth_df = pd.DataFrame(truths)
         result = metric_fn(pred_df.RMM1.values, truth_df.RMM1.values, pred_df.RMM2.values, truth_df.RMM2.values)
@@ -57,12 +45,7 @@ def print_relative_improvement(
     higher_is_better: bool = True,
     paired_cis: Optional[List[List[Tuple[float, float]]]] = None,
 ) -> None:
-    """Print relative improvement table for a metric, optionally with paired bootstrap CIs.
-
-    Args:
-        paired_cis: Output from block_bootstrap_paired_improvement — list of
-            [(ci_lo, ci_hi)] per model (excluding baseline), per biweekly group.
-    """
+    """Print relative improvement vs the last (baseline) model per biweekly group, optionally with paired bootstrap CIs."""
     has_ci = paired_cis is not None
     print(f"\nRelative Improvement in {metric_name} (compared to '{plot_labels[-1]}')")
     if has_ci:
@@ -102,15 +85,11 @@ def print_relative_improvement(
         print("=" * 100)
     else:
         print("=" * 70)
-    if higher_is_better:
-        print(f"Values are percent relative improvement in {metric_name}.\n")
-    else:
-        print(f"Values are percent relative improvement in {metric_name}.\n")
+    print(f"Values are percent relative improvement in {metric_name}.\n")
 
 
 def main():
-    """Main function to compute and plot lead time errors."""
-    # Parse command line arguments
+    """Compute and plot BCOR/BMSE versus lead time, with optional bootstrap significance."""
     parser = argparse.ArgumentParser(description='Generate lead time error plots')
     parser.add_argument('--config', type=str, required=True, help='Path to YAML configuration file')
     args = parser.parse_args()
@@ -130,37 +109,12 @@ def main():
 
     # Plot settings
     plot_settings = config.get('plot_settings', {})
-    font_settings = plot_settings.get('fonts', {})
     titles_settings = plot_settings.get('titles', {})
-
-    # Extract font sizes and line style settings
-    plot_kwargs = {
-        'fontsize_title': font_settings.get('title', 14),
-        'fontsize_axis_label': font_settings.get('axis_label', 12),
-        'fontsize_tick_label': font_settings.get('tick_label', 11),
-        'fontsize_legend': font_settings.get('legend', 11),
-        'fontweight_title': font_settings.get('title_weight', 'bold'),
-        'fontweight_title_label': font_settings.get('title_label_weight'),
-        'font_family': font_settings.get('family'),
-        'colors': plot_settings.get('colors'),
-        'linestyles': plot_settings.get('linestyles'),
-        'linewidth': plot_settings.get('linewidth', 2),
-    }
-
-    # Extract y-axis label settings
-    y_labels = plot_settings.get('y_labels', {})
-    if y_labels.get('hide_bcor', False):
+    plot_kwargs = get_line_plot_kwargs(plot_settings)
+    if plot_settings.get('y_labels', {}).get('hide_bcor', False):
         plot_kwargs['y_label'] = ''
 
-    # Bootstrap settings
-    bootstrap_config = config.get('bootstrap', {})
-    bootstrap_enabled = bootstrap_config.get('enabled', False)
-    bootstrap_kwargs = {
-        'n_samples': bootstrap_config.get('n_samples', 1000),
-        'block_size': bootstrap_config.get('block_size', 13),
-        'ci_level': bootstrap_config.get('ci_level', 0.95),
-        'seed': bootstrap_config.get('seed', 42),
-    }
+    bootstrap_enabled, bootstrap_kwargs = get_bootstrap_settings(config)
 
     # Load ground truth
     ground_truth = load_rmm_indices(ground_truth_path)
@@ -184,27 +138,22 @@ def main():
     if fuxi_path:
         fuxi_ds, fuxi_max_lt, _ = load_forecast(fuxi_path, start_date, end_date, member='mean')
 
-    # Process each forecast directory
-    for predict_dir in forecast_dirs:
-        dfs, max_lt, _ = load_forecast(predict_dir, start_date, end_date)
-
-        # Compute metrics
+    def _add_model(dfs, max_lt):
+        """Compute and store all-forecast and amplitude-filtered metrics for one model."""
         bcor = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bcor)
         bmse = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bmse).T
-
         correlations.append(bcor)
         amplitude_errors.append(bmse[0])
         phase_errors.append(bmse[1])
         max_lead_times.append(max_lt)
         all_model_dfs.append(dfs)
 
-        # Compute amplitude-filtered metrics if FuXi data is available
+        # Amplitude-filtered metrics; filter_type names the FuXi-amplitude regime to exclude
         if fuxi_ds is not None:
             bcor_low_amp = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bcor, fuxi_ds, 'high')
             bmse_low_amp = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bmse, fuxi_ds, 'high').T
             bcor_high_amp = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bcor, fuxi_ds, 'low')
             bmse_high_amp = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bmse, fuxi_ds, 'low').T
-
             low_amp_event_correlations.append(bcor_low_amp)
             low_amp_event_amplitude_errors.append(bmse_low_amp[0])
             low_amp_event_phase_errors.append(bmse_low_amp[1])
@@ -212,27 +161,13 @@ def main():
             high_amp_event_amplitude_errors.append(bmse_high_amp[0])
             high_amp_event_phase_errors.append(bmse_high_amp[1])
 
-    # Process FuXi forecasts if available
-    if fuxi_ds is not None and fuxi_max_lt is not None:
-        bcor = compute_metric_across_leads(fuxi_ds, fuxi_max_lt, ground_truth, compute_bcor)
-        bmse = compute_metric_across_leads(fuxi_ds, fuxi_max_lt, ground_truth, compute_bmse).T
-        bcor_low_amp = compute_metric_across_leads(fuxi_ds, fuxi_max_lt, ground_truth, compute_bcor, fuxi_ds, 'high')
-        bmse_low_amp = compute_metric_across_leads(fuxi_ds, fuxi_max_lt, ground_truth, compute_bmse, fuxi_ds, 'high').T
-        bcor_high_amp = compute_metric_across_leads(fuxi_ds, fuxi_max_lt, ground_truth, compute_bcor, fuxi_ds, 'low')
-        bmse_high_amp = compute_metric_across_leads(fuxi_ds, fuxi_max_lt, ground_truth, compute_bmse, fuxi_ds, 'low').T
+    for predict_dir in forecast_dirs:
+        dfs, max_lt, _ = load_forecast(predict_dir, start_date, end_date)
+        _add_model(dfs, max_lt)
 
-        correlations.append(bcor)
-        amplitude_errors.append(bmse[0])
-        phase_errors.append(bmse[1])
-        max_lead_times.append(fuxi_max_lt)
-        low_amp_event_correlations.append(bcor_low_amp)
-        low_amp_event_amplitude_errors.append(bmse_low_amp[0])
-        low_amp_event_phase_errors.append(bmse_low_amp[1])
-        high_amp_event_correlations.append(bcor_high_amp)
-        high_amp_event_amplitude_errors.append(bmse_high_amp[0])
-        high_amp_event_phase_errors.append(bmse_high_amp[1])
-
-        all_model_dfs.append(fuxi_ds)
+    # FuXi is appended last and serves as the baseline
+    if fuxi_ds is not None:
+        _add_model(fuxi_ds, fuxi_max_lt)
 
     # Prepare lead times
     lead_times = [np.arange(1, max_lt + 1) for max_lt in max_lead_times]
@@ -340,8 +275,8 @@ def main():
 
         # Amplitude grid with significance coloring
         if bootstrap_enabled and all_model_dfs:
-            # Low-amplitude regime uses filter_type='high' (exclude high-amp inits);
-            # high-amplitude regime uses filter_type='low' (exclude low-amp inits).
+            # Low-amplitude regime uses filter_type='high' (exclude high-amplitude FuXi forecasts);
+            # high-amplitude regime uses filter_type='low' (exclude low-amplitude FuXi forecasts).
             low_amp_bcor_sig = block_bootstrap_per_lead_significance(
                 all_model_dfs, max_lead_times, ground_truth, compute_bcor,
                 higher_is_better=True, fuxi_ds=fuxi_ds, filter_type='high',
@@ -411,7 +346,7 @@ def main():
                 all_model_dfs, max_lead_times, ground_truth,
                 threshold=0.5, **bootstrap_kwargs
             )
-            print(f"\nSkillful Window (BCOR > 0.5, 95% CI)")
+            print("\nSkillful Window (BCOR > 0.5, 95% CI)")
             print("=" * 60)
             print("{:<25} {:<35}".format("Model", "Skillful Window (days)"))
             print("-" * 60)

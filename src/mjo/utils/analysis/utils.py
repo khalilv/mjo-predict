@@ -33,6 +33,34 @@ def load_config(config_path: str) -> Dict[str, Any]:
         return yaml.safe_load(f)
 
 
+def get_bootstrap_settings(config: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+    """Return (enabled, kwargs) for the block bootstrap from the config's 'bootstrap' section."""
+    bootstrap_config = config.get('bootstrap', {})
+    return bootstrap_config.get('enabled', False), {
+        'n_samples': bootstrap_config.get('n_samples', 1000),
+        'block_size': bootstrap_config.get('block_size', 13),
+        'ci_level': bootstrap_config.get('ci_level', 0.95),
+        'seed': bootstrap_config.get('seed', 42),
+    }
+
+
+def get_line_plot_kwargs(plot_settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Build font and line-style kwargs for the lead-time line plots from 'plot_settings'."""
+    font_settings = plot_settings.get('fonts', {})
+    return {
+        'fontsize_title': font_settings.get('title', 14),
+        'fontsize_axis_label': font_settings.get('axis_label', 12),
+        'fontsize_tick_label': font_settings.get('tick_label', 11),
+        'fontsize_legend': font_settings.get('legend', 11),
+        'fontweight_title': font_settings.get('title_weight', 'bold'),
+        'fontweight_title_label': font_settings.get('title_label_weight'),
+        'font_family': font_settings.get('family'),
+        'colors': plot_settings.get('colors'),
+        'linestyles': plot_settings.get('linestyles'),
+        'linewidth': plot_settings.get('linewidth', 2),
+    }
+
+
 # =============================================================================
 # Metrics
 # =============================================================================
@@ -120,6 +148,57 @@ def compute_phase_bias(
 
 
 # =============================================================================
+# Per-lead data collection
+# =============================================================================
+
+def is_amplitude_excluded(amplitude: float, filter_type: str) -> bool:
+    """Return True if amplitude lies in the regime that filter_type EXCLUDES ('high': >= 1, 'low': < 1)."""
+    return (filter_type == 'low' and amplitude < 1) or (filter_type == 'high' and amplitude >= 1)
+
+
+def collect_lead_pairs(
+    dataframes: List[pd.DataFrame],
+    lt: int,
+    ground_truth_df: pd.DataFrame,
+    fuxi_ds: Optional[List[pd.DataFrame]] = None,
+    filter_type: Optional[str] = None,
+    filter_low_amp_init: bool = False,
+    check_dates: bool = False,
+) -> Tuple[List[int], List[pd.Series], List[pd.Series]]:
+    """Collect (forecast index, prediction row, truth row) at one lead time, with optional amplitude filtering.
+
+    fuxi_ds/filter_type filter on the FuXi forecast amplitude at the target date (see is_amplitude_excluded);
+    filter_low_amp_init drops forecasts whose observed amplitude on the init date is < 1.
+    """
+    df_indices, preds, truths = [], [], []
+    for i, df in enumerate(dataframes):
+        if fuxi_ds is not None:
+            assert filter_type in ('high', 'low'), 'Filter type high or low must be provided for filtering'
+            if check_dates:
+                assert (fuxi_ds[i].index == df.index).all(), 'Found mismatch in dates between FuXi forecast and predictions'
+            if is_amplitude_excluded(fuxi_ds[i].loc[df.index[lt]].amplitude, filter_type):
+                continue
+        if filter_low_amp_init:
+            init_date = df.index[0] - timedelta(days=1)
+            if ground_truth_df.loc[init_date].amplitude < 1:
+                continue
+        if lt < len(df):
+            df_indices.append(i)
+            preds.append(df.iloc[lt])
+            truths.append(ground_truth_df.loc[df.index[lt]])
+    return df_indices, preds, truths
+
+
+def compute_bias_from_frames(pred_df: pd.DataFrame, truth_df: pd.DataFrame, bias_type: str) -> float:
+    """Compute mean amplitude bias (from the amplitude column) or mean signed phase bias for paired rows."""
+    if bias_type == 'amplitude':
+        return (pred_df.amplitude.values - truth_df.amplitude.values).mean()
+    num = pred_df.RMM1.values * truth_df.RMM2.values - pred_df.RMM2.values * truth_df.RMM1.values
+    den = pred_df.RMM1.values * truth_df.RMM1.values + pred_df.RMM2.values * truth_df.RMM2.values
+    return np.arctan2(num, den).mean()
+
+
+# =============================================================================
 # Bootstrap utils
 # =============================================================================
 
@@ -170,26 +249,15 @@ def _collect_per_lt_data(
     max_lt: int,
     ground_truth_df: pd.DataFrame,
     fuxi_ds: Optional[List[pd.DataFrame]] = None,
-    filter_type: Optional[str] = None
+    filter_type: Optional[str] = None,
+    filter_low_amp_init: bool = False,
 ) -> Tuple[List[np.ndarray], List[pd.DataFrame], List[pd.DataFrame]]:
-    """Pre-collect (pred, truth) pairs per lead time for bootstrap resampling.
-
-    Returns parallel lists of (df_indices, pred_DataFrames, truth_DataFrames),
-    one entry per lead time. Optional amplitude filtering via fuxi_ds.
-    """
+    """Pre-collect (forecast indices, preds, truths) per lead time for bootstrap resampling."""
     per_lt_indices, per_lt_preds, per_lt_truths = [], [], []
     for lt in range(max_lt):
-        df_indices, preds, truths = [], [], []
-        for i, df in enumerate(dataframes):
-            if fuxi_ds is not None:
-                assert filter_type in ('high', 'low')
-                fuxi_amplitude = fuxi_ds[i].loc[df.index[lt]].amplitude
-                if (filter_type == 'low' and fuxi_amplitude < 1) or (filter_type == 'high' and fuxi_amplitude >= 1):
-                    continue
-            if lt < len(df):
-                df_indices.append(i)
-                preds.append(df.iloc[lt])
-                truths.append(ground_truth_df.loc[df.index[lt]])
+        df_indices, preds, truths = collect_lead_pairs(
+            dataframes, lt, ground_truth_df, fuxi_ds, filter_type, filter_low_amp_init
+        )
         per_lt_indices.append(np.array(df_indices))
         per_lt_preds.append(pd.DataFrame(preds))
         per_lt_truths.append(pd.DataFrame(truths))
@@ -231,47 +299,6 @@ def _bootstrap_model_metrics(boot_idx, all_per_lt, max_lts, metric_fn, n_models)
         model_metrics.append(vals)
     return model_metrics
 
-def block_bootstrap_bias(
-    dataframes: List[pd.DataFrame],
-    bias_type: str,
-    max_lt: int,
-    ground_truth_df: pd.DataFrame,
-    n_samples: int = 1000,
-    block_size: int = 1,
-    ci_level: float = 0.95,
-    seed: int = 42,
-    fuxi_ds: Optional[List[pd.DataFrame]] = None,
-    filter_type: Optional[str] = None
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Bootstrap CIs for amplitude or phase bias across lead times."""
-    assert bias_type in ('amplitude', 'phase')
-    rng = np.random.default_rng(seed)
-    alpha = (1 - ci_level) / 2
-
-    per_lt_indices, per_lt_preds, per_lt_truths = _collect_per_lt_data(
-        dataframes, max_lt, ground_truth_df, fuxi_ds, filter_type
-    )
-    bootstrap_indices = _generate_block_bootstrap_indices(n_samples, len(dataframes), block_size, rng)
-    boot_results = np.zeros((n_samples, max_lt))
-
-    for b in range(n_samples):
-        for lt in range(max_lt):
-            positions = _resolve_bootstrap_positions(per_lt_indices[lt], bootstrap_indices[b])
-            if len(positions) == 0:
-                boot_results[b, lt] = np.nan
-                continue
-            pred_df = per_lt_preds[lt].iloc[positions]
-            truth_df = per_lt_truths[lt].iloc[positions]
-            if bias_type == 'amplitude':
-                boot_results[b, lt] = (pred_df.amplitude.values - truth_df.amplitude.values).mean()
-            else:
-                num = pred_df.RMM1.values * truth_df.RMM2.values - pred_df.RMM2.values * truth_df.RMM1.values
-                den = pred_df.RMM1.values * truth_df.RMM1.values + pred_df.RMM2.values * truth_df.RMM2.values
-                boot_results[b, lt] = np.arctan2(num, den).mean()
-
-    return (np.nanpercentile(boot_results, alpha * 100, axis=0),
-            np.nanpercentile(boot_results, (1 - alpha) * 100, axis=0))
-
 
 def block_bootstrap_crossing(
     dataframes: List[pd.DataFrame],
@@ -285,29 +312,13 @@ def block_bootstrap_crossing(
     seed: int = 42,
     filter_low_amp_init: bool = False
 ) -> Tuple[float, float]:
-    """Bootstrap CI for the lead time where a metric first crosses a threshold.
-
-    Used for heatmap threshold bar tails.
-    """
+    """Bootstrap CI for the lead time where a metric first crosses a threshold (heatmap threshold bar tails)."""
     rng = np.random.default_rng(seed)
     alpha = (1 - ci_level) / 2
 
-    # Custom collection for filter_low_amp_init (filters by init-date amplitude)
-    per_lt_indices, per_lt_preds, per_lt_truths = [], [], []
-    for lt in range(max_lt):
-        df_indices, preds, truths = [], [], []
-        for i, df in enumerate(dataframes):
-            if filter_low_amp_init:
-                init_date = df.index[0] - timedelta(days=1)
-                if ground_truth_df.loc[init_date].amplitude < 1:
-                    continue
-            if lt < len(df):
-                df_indices.append(i)
-                preds.append(df.iloc[lt])
-                truths.append(ground_truth_df.loc[df.index[lt]])
-        per_lt_indices.append(np.array(df_indices))
-        per_lt_preds.append(pd.DataFrame(preds))
-        per_lt_truths.append(pd.DataFrame(truths))
+    per_lt_indices, per_lt_preds, per_lt_truths = _collect_per_lt_data(
+        dataframes, max_lt, ground_truth_df, filter_low_amp_init=filter_low_amp_init
+    )
 
     bootstrap_indices = _generate_block_bootstrap_indices(n_samples, len(dataframes), block_size, rng)
     crossings = np.zeros(n_samples)
@@ -340,9 +351,8 @@ def block_bootstrap_paired_improvement(
 ) -> List[List[Tuple[float, float]]]:
     """Paired bootstrap CIs for relative improvement of each model vs baseline.
 
-    The last entry in all_model_dataframes is treated as the baseline.
-
-    Returns list of [(ci_lo, ci_hi)] per model (excluding baseline), per biweekly group.
+    The last entry in all_model_dataframes is treated as the baseline; fuxi_ds/filter_type
+    filter as in collect_lead_pairs. Returns list of [(ci_lo, ci_hi)] per model (excluding baseline), per biweekly group.
     """
     rng = np.random.default_rng(seed)
     alpha = (1 - ci_level) / 2
@@ -395,7 +405,8 @@ def block_bootstrap_per_lead_significance(
 
     For each bootstrap replicate, computes the paired difference
     (model - baseline) at each lead time using the same resampled init dates.
-    A lead time is significant if its 95% CI excludes zero.
+    A lead time is significant if its CI excludes zero. fuxi_ds/filter_type filter
+    as in collect_lead_pairs.
 
     Returns list of boolean arrays (one per model excluding baseline).
     True = CI excludes zero (significant improvement or degradation).

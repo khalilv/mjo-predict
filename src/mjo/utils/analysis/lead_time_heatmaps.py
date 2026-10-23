@@ -3,13 +3,14 @@ import argparse
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from datetime import timedelta
-from mjo.utils.analysis.utils import load_forecast, load_config, compute_bcor, block_bootstrap_crossing
+from mjo.utils.analysis.utils import (
+    load_forecast, load_config, get_bootstrap_settings, collect_lead_pairs,
+    compute_bcor, block_bootstrap_crossing,
+)
 from mjo.utils.RMM.io import load_rmm_indices
 from typing import List, Callable
-from mjo.utils.plot import (
-    bivariate_correlation_vs_lead_time_heatmap,
-)
+from mjo.utils.plot import bivariate_correlation_vs_lead_time_heatmap
+
 
 def compute_metric_across_leads(
     dataframes: List[pd.DataFrame],
@@ -18,19 +19,10 @@ def compute_metric_across_leads(
     metric_fn: Callable,
     filter_low_amp_init: bool = False
 ) -> np.ndarray:
-    """Compute a metric (bcor or bmse) across all lead times for forecasts."""
+    """Compute a metric across all lead times, optionally dropping forecasts initialized at observed amplitude < 1."""
     results = []
     for lt in tqdm(range(max_lt), 'Computing per-lead metric'):
-        preds, truths = [], []
-        for i, df in enumerate(dataframes):
-            if filter_low_amp_init:
-                init_date = df.index[0] - timedelta(days=1)
-                init_amplitude = ground_truth_df.loc[init_date].amplitude
-                if init_amplitude < 1:
-                    continue
-            if lt < len(df):
-                preds.append(df.iloc[lt])
-                truths.append(ground_truth_df.loc[df.index[lt]])
+        _, preds, truths = collect_lead_pairs(dataframes, lt, ground_truth_df, filter_low_amp_init=filter_low_amp_init)
         pred_df = pd.DataFrame(preds)
         truth_df = pd.DataFrame(truths)
         result = metric_fn(pred_df.RMM1.values, truth_df.RMM1.values, pred_df.RMM2.values, truth_df.RMM2.values)
@@ -61,8 +53,8 @@ def validate_and_flatten_dirs(
             )
 
     # Flatten to 1D list (all models concatenated)
-    flat_dirs = [dir_path for model_dirs in forecast_dirs for dir_path in model_dirs]
-    return flat_dirs
+    return [dir_path for model_dirs in forecast_dirs for dir_path in model_dirs]
+
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
@@ -83,6 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--output-dir', type=str, help='Override output directory')
 
     return parser.parse_args()
+
 
 def main() -> None:
     """Load config, compute correlations, and generate heatmap plots."""
@@ -111,15 +104,8 @@ def main() -> None:
     )
     lookback_array = np.array(lookback_names)
 
-    # Bootstrap settings
-    bootstrap_config = config.get('bootstrap', {})
-    bootstrap_enabled = bootstrap_config.get('enabled', False)
-    bootstrap_kwargs = {
-        'n_samples': bootstrap_config.get('n_samples', 1000),
-        'block_size': bootstrap_config.get('block_size', 13),
-        'ci_level': bootstrap_config.get('ci_level', 0.95),
-        'seed': bootstrap_config.get('seed', 42),
-    }
+    bootstrap_enabled, bootstrap_kwargs = get_bootstrap_settings(config)
+    threshold = config.get('plot_settings', {}).get('threshold', 0.5)
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -133,22 +119,18 @@ def main() -> None:
     crossing_ci_lower_events_list = []
     crossing_ci_upper_events_list = []
 
-    # Store loaded dataframes for bootstrap reuse
-    all_dfs = []
-
     for predict_dir in forecast_dirs_flat:
-        dfs, max_lt, date_strs = load_forecast(predict_dir, start_date, end_date)
+        dfs, max_lt, _ = load_forecast(predict_dir, start_date, end_date)
         bcor = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bcor)
         bcor_events = compute_metric_across_leads(dfs, max_lt, ground_truth, compute_bcor, filter_low_amp_init=True)
         correlations.append(bcor)
         max_lead_times.append(max_lt)
         event_correlations.append(bcor_events)
-        all_dfs.append(dfs)
 
         if bootstrap_enabled:
             ci_lo, ci_hi = block_bootstrap_crossing(
                 dfs, max_lt, ground_truth, compute_bcor,
-                threshold=config.get('plot_settings', {}).get('threshold', 0.5),
+                threshold=threshold,
                 **bootstrap_kwargs
             )
             crossing_ci_lower_list.append(ci_lo)
@@ -156,7 +138,7 @@ def main() -> None:
 
             ci_lo_ev, ci_hi_ev = block_bootstrap_crossing(
                 dfs, max_lt, ground_truth, compute_bcor,
-                threshold=config.get('plot_settings', {}).get('threshold', 0.5),
+                threshold=threshold,
                 filter_low_amp_init=True,
                 **bootstrap_kwargs
             )
@@ -176,14 +158,14 @@ def main() -> None:
     if bootstrap_enabled:
         fuxi_ci_lo, fuxi_ci_hi = block_bootstrap_crossing(
             fuxi_ds, fuxi_max_lt, ground_truth, compute_bcor,
-            threshold=config.get('plot_settings', {}).get('threshold', 0.5),
+            threshold=threshold,
             **bootstrap_kwargs
         )
         fuxi_crossing_ci = (fuxi_ci_lo, fuxi_ci_hi)
 
         fuxi_ci_lo_ev, fuxi_ci_hi_ev = block_bootstrap_crossing(
             fuxi_ds, fuxi_max_lt, ground_truth, compute_bcor,
-            threshold=config.get('plot_settings', {}).get('threshold', 0.5),
+            threshold=threshold,
             filter_low_amp_init=True,
             **bootstrap_kwargs
         )
@@ -194,7 +176,6 @@ def main() -> None:
     fonts = plot_settings.get('fonts', {})
     labels = plot_settings.get('labels', {})
     colormap = plot_settings.get('colormap', {})
-    threshold = plot_settings.get('threshold', 0.5)
     legend_position = plot_settings.get('legend_position', 'upper right')
 
     # Prepare common plotting parameters
@@ -287,6 +268,7 @@ def main() -> None:
             output_filename=os.path.join(output_dir, 'bcor_high_amp_events_heatmap_ci.png'),
             **ci_plot_kwargs
         )
+
 
 if __name__ == "__main__":
     main()

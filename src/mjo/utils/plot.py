@@ -1,30 +1,46 @@
 import math
+import re
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib import colors as mcolors
 import matplotlib.ticker as ticker
 from matplotlib.lines import Line2D
 from typing import Sequence, Tuple, List, Union, Optional, Literal, Dict, Any
 import matplotlib.patches as mpatches
 
-def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplitude, gt_amplitude, pred_label = None, gt_label = None, output_filename = None):
-    """Create scatter plots comparing predicted vs ground truth RMM indices and amplitude.
 
-    Args:
-        pred_rmm1: Predicted RMM1 values
-        gt_rmm1: Ground truth RMM1 values
-        pred_rmm2: Predicted RMM2 values
-        gt_rmm2: Ground truth RMM2 values
-        pred_amplitude: Predicted amplitude values
-        gt_amplitude: Ground truth amplitude values
-        pred_label: Label for predictions (default: 'Predictions')
-        gt_label: Label for ground truth (default: 'Ground Truth')
-        output_filename: Path to save figure (if None, displays plot)
-    """
+# =============================================================================
+# Shared helpers
+# =============================================================================
+
+def _set_title(ax, title, fontsize_title, fontweight_title, fontweight_title_label, font_family):
+    """Set an axes title, bolding only a leading '(a)'-style label when fontweight_title_label is 'bold'."""
+    label_match = re.match(r'^(\([a-zA-Z0-9]+\))\s*(.*)$', title)
+    if label_match and fontweight_title_label == 'bold':
+        title_str = f"$\\mathbf{{{label_match.group(1)}}}$ {label_match.group(2)}"
+        title_kwargs = {'fontsize': fontsize_title}
+    else:
+        title_str = title
+        title_kwargs = {'fontsize': fontsize_title, 'fontweight': fontweight_title}
+    if font_family:
+        title_kwargs['family'] = font_family
+    ax.set_title(title_str, **title_kwargs)
+
+
+def _save_and_close(output_filename):
+    """Save the current figure at 600 dpi and close it, if a filename is given."""
+    if output_filename:
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
+        plt.close()
+
+
+def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplitude, gt_amplitude, pred_label = None, gt_label = None, output_filename = None):
+    """Scatter predicted vs ground truth RMM1, RMM2 and amplitude (shows the plot if no output_filename)."""
     pred_label = pred_label if pred_label else 'Predictions'
     gt_label = gt_label if gt_label else 'Ground Truth'
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    
+
     rmm1_corr = np.corrcoef(pred_rmm1, gt_rmm1)[0, 1]
     axes[0].scatter(pred_rmm1, gt_rmm1, alpha=0.8, s=2)
     axes[0].set_title(f"RMM1 correlation. r = {rmm1_corr:.3f}")
@@ -56,6 +72,98 @@ def correlation_scatter_plot(pred_rmm1, gt_rmm1, pred_rmm2, gt_rmm2, pred_amplit
     else:
         plt.show()
 
+
+# =============================================================================
+# Phase space
+# =============================================================================
+
+def _add_region_labels(xlim, ylim, frac, fontsize_region_label, font_family):
+    """Label the four MJO regions at frac of the axis limits."""
+    x_pos = xlim[1] * frac
+    y_pos = ylim[1] * frac
+    font_props = {'fontsize': fontsize_region_label, 'ha': 'center', 'va': 'center'}
+    if font_family:
+        font_props['fontfamily'] = font_family
+
+    plt.text(0, -y_pos, "Indian Ocean", **font_props)
+    plt.text(x_pos, 0, "Maritime Continent", rotation=-90, **font_props)
+    plt.text(0, y_pos, "Western Pacific", **font_props)
+    plt.text(-x_pos, 0, "Western Hem.& Africa", rotation=90, **font_props)
+
+
+def _draw_phase_wedges(xlim, ylim, lw, fontsize_phase_label, font_family):
+    """Draw the eight phase boundary lines and P1-P8 labels."""
+    # Scale radius based on xlim/ylim (use average of the two)
+    max_lim = (xlim[1] + ylim[1]) / 2
+    r = math.sqrt(2 * max_lim * max_lim)
+    phase_labels = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8']
+
+    for i in range(8):
+        angle = (5 + i) * np.pi / 4
+        x = np.cos(angle)
+        y = np.sin(angle)
+        plt.plot([0, r * x], [0, r * y], color='lightgray', lw=lw, zorder=0)
+
+    font_props = {'fontsize': fontsize_phase_label, 'ha': 'center', 'va': 'center', 'color': 'gray'}
+    if font_family:
+        font_props['fontfamily'] = font_family
+
+    for i, label in enumerate(phase_labels):
+        angle = (4.5 + i) * np.pi / 4
+        x = max_lim * np.cos(angle)
+        y = max_lim * np.sin(angle)
+        plt.text(x, y, label, **font_props)
+
+
+def _phase_space_axis_labels_and_title(ax, title, fontsize_title, fontsize_axis_label, fontweight_title, fontweight_title_label, font_family):
+    """Set RMM1/RMM2 axis labels and the title, drawing a leading '(a)' label separately if fontweight_title_label is set."""
+    font_props = {'fontsize': fontsize_axis_label}
+    if font_family:
+        font_props['fontfamily'] = font_family
+    plt.xlabel("RMM1", **font_props)
+    plt.ylabel("RMM2", **font_props)
+
+    if not title:
+        return
+    if title.startswith('(') and ')' in title[:5] and fontweight_title_label:
+        close_paren = title.index(')')
+        label_part = title[:close_paren+1]
+        rest_part = title[close_paren+1:].strip()
+        plt.title(label_part + ' ' + rest_part, fontsize=fontsize_title,
+                 fontweight=fontweight_title, pad=10)
+        # Replace the title with separately weighted label and text
+        ax.title.set_text('')
+        ax.text(0.5, 1.02, label_part, transform=ax.transAxes,
+               fontsize=fontsize_title, fontweight=fontweight_title_label,
+               ha='center', va='bottom')
+        ax.text(0.5 + len(label_part)*0.012, 1.02, rest_part, transform=ax.transAxes,
+               fontsize=fontsize_title, fontweight=fontweight_title,
+               ha='left', va='bottom')
+    else:
+        plt.title(title, fontsize=fontsize_title, fontweight=fontweight_title, pad=10)
+
+
+def _finish_phase_space(xlim, ylim, legend_loc, fontsize_legend, output_filename, legend_order=None):
+    """Apply limits and equal aspect, add a de-duplicated (optionally ordered) legend, then save."""
+    plt.xlim(xlim)
+    plt.ylim(ylim)
+    plt.gca().set_aspect('equal')
+
+    # prevent duplicate legend entries
+    handles, legend_labels = plt.gca().get_legend_handles_labels()
+    unique = dict(zip(legend_labels, handles))
+    if legend_order:
+        # Listed labels first, the rest in plotting order
+        ordered = {lbl: unique[lbl] for lbl in legend_order if lbl in unique}
+        for lbl, h in unique.items():
+            ordered.setdefault(lbl, h)
+        unique = ordered
+    plt.legend(unique.values(), unique.keys(), loc=legend_loc, fontsize=fontsize_legend)
+
+    plt.tight_layout()
+    _save_and_close(output_filename)
+
+
 def phase_space_plot(
     trajectories: List[Dict[str, Any]],
     title: Optional[str] = None,
@@ -74,71 +182,16 @@ def phase_space_plot(
     font_family: Optional[str] = None,
     marker_interval: int = 5,
     legend_loc: str = 'best',
+    legend_order: Optional[List[str]] = None,
 ) -> plt.Figure:
-    """Create a phase space trajectory plot showing RMM1 vs RMM2.
+    """Plot RMM1 vs RMM2 phase-space trajectories.
 
-    Args:
-        trajectories: List of dicts each with required keys 'rmm1', 'rmm2',
-            'label', 'color', 'linestyle' and optional 'alpha' (default 0.85)
-            and 'marker_start' (default True). Drawn in given order.
-        title: Plot title
-        output_filename: Path to save figure
-        figsize: Figure size
-        xlim: X-axis limits
-        ylim: Y-axis limits
-        fontsize_title: Font size for title
-        fontsize_axis_label: Font size for axis labels
-        fontsize_region_label: Font size for region labels
-        fontsize_phase_label: Font size for phase labels
-        fontsize_legend: Font size for legend
-        fontweight_title: Font weight for title
-        fontweight_title_label: Font weight for title label (e.g., "(a)")
-        font_family: Font family
-        marker_interval: Interval for trajectory markers
-        legend_loc: Legend location
-
-    Returns:
-        Matplotlib figure object
+    Each trajectory dict needs 'rmm1', 'rmm2', 'label', 'color' and optionally 'linestyle',
+    'alpha' (0.85) and 'marker_start' (True); trajectories are drawn in order. legend_order
+    lists labels to show first in the legend (others follow in plotting order).
     """
-
-    # Set font family if provided
     if font_family:
         plt.rcParams['font.family'] = font_family
-
-    def _add_region_labels():
-        # Position labels based on xlim/ylim (at ~87.5% of the limit)
-        x_pos = xlim[1] * 0.875
-        y_pos = ylim[1] * 0.875
-        font_props = {'fontsize': fontsize_region_label, 'ha': 'center', 'va': 'center'}
-        if font_family:
-            font_props['fontfamily'] = font_family
-
-        plt.text(0, -y_pos, "Indian Ocean", **font_props)
-        plt.text(x_pos, 0, "Maritime Continent", rotation=-90, **font_props)
-        plt.text(0, y_pos, "Western Pacific", **font_props)
-        plt.text(-x_pos, 0, "Western Hem.& Africa", rotation=90, **font_props)
-
-    def _draw_phase_wedges():
-        # Scale radius based on xlim/ylim (use average of the two)
-        max_lim = (xlim[1] + ylim[1]) / 2
-        r = math.sqrt(2 * max_lim * max_lim)
-        phase_labels = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8']
-
-        for i in range(8):
-            angle = (5 + i) * np.pi / 4
-            x = np.cos(angle)
-            y = np.sin(angle)
-            plt.plot([0, r * x], [0, r * y], color='lightgray', lw=0.8, zorder=0)
-
-        font_props = {'fontsize': fontsize_phase_label, 'ha': 'center', 'va': 'center', 'color': 'gray'}
-        if font_family:
-            font_props['fontfamily'] = font_family
-
-        for i, label in enumerate(phase_labels):
-            angle = (4.5 + i) * np.pi / 4
-            x = max_lim * np.cos(angle)
-            y = max_lim * np.sin(angle)
-            plt.text(x, y, label, **font_props)
 
     fig = plt.figure(figsize=figsize)
 
@@ -150,68 +203,22 @@ def phase_space_plot(
     for traj in trajectories:
         rmm1 = traj['rmm1']
         rmm2 = traj['rmm2']
-        label = traj['label']
         color = traj['color']
-        linestyle = traj.get('linestyle', '-')
-        alpha = traj.get('alpha', 0.85)
-        marker_start = traj.get('marker_start', True)
-
-        plt.plot(rmm1, rmm2, color=color, linestyle=linestyle, alpha=alpha, label=label)
-        if marker_start and len(rmm1) > 0:
+        plt.plot(rmm1, rmm2, color=color, linestyle=traj.get('linestyle', '-'), alpha=traj.get('alpha', 0.85), label=traj['label'])
+        if traj.get('marker_start', True) and len(rmm1) > 0:
             plt.plot(rmm1[0], rmm2[0], color=color, marker='o')
         for lt in range(marker_interval, len(rmm1), marker_interval):
             plt.plot(rmm1[lt], rmm2[lt], color=color, marker='.')
 
     plt.axhline(0, color='gray', linewidth=0.5)
     plt.axvline(0, color='gray', linewidth=0.5)
-    _draw_phase_wedges()
-    _add_region_labels()
-
-    # Apply font settings to axis labels
-    font_props = {'fontsize': fontsize_axis_label}
-    if font_family:
-        font_props['fontfamily'] = font_family
-    plt.xlabel("RMM1", **font_props)
-    plt.ylabel("RMM2", **font_props)
-
-    # Handle title with optional bold label support (e.g., "(a)")
-    if title:
-        # Check if title starts with a label like "(a)", "(b)", etc.
-        if title and title.startswith('(') and ')' in title[:5]:
-            close_paren = title.index(')')
-            label_part = title[:close_paren+1]
-            rest_part = title[close_paren+1:].strip()
-            if fontweight_title_label:
-                plt.title(label_part + ' ' + rest_part, fontsize=fontsize_title,
-                         fontweight=fontweight_title, pad=10)
-                # Make just the label bold if specified
-                ax.title.set_text('')
-                ax.text(0.5, 1.02, label_part, transform=ax.transAxes,
-                       fontsize=fontsize_title, fontweight=fontweight_title_label,
-                       ha='center', va='bottom')
-                ax.text(0.5 + len(label_part)*0.012, 1.02, rest_part, transform=ax.transAxes,
-                       fontsize=fontsize_title, fontweight=fontweight_title,
-                       ha='left', va='bottom')
-            else:
-                plt.title(title, fontsize=fontsize_title, fontweight=fontweight_title, pad=10)
-        else:
-            plt.title(title, fontsize=fontsize_title, fontweight=fontweight_title, pad=10)
-
-    plt.xlim(xlim)
-    plt.ylim(ylim)
-    plt.gca().set_aspect('equal')
-
-    # prevent duplicate legend entries
-    handles, legend_labels = plt.gca().get_legend_handles_labels()
-    unique = dict(zip(legend_labels, handles))
-    plt.legend(unique.values(), unique.keys(), loc=legend_loc, fontsize=fontsize_legend)
-
-    plt.tight_layout()
-    if output_filename:
-        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
-        plt.close()
+    _draw_phase_wedges(xlim, ylim, 0.8, fontsize_phase_label, font_family)
+    _add_region_labels(xlim, ylim, 0.875, fontsize_region_label, font_family)
+    _phase_space_axis_labels_and_title(ax, title, fontsize_title, fontsize_axis_label, fontweight_title, fontweight_title_label, font_family)
+    _finish_phase_space(xlim, ylim, legend_loc, fontsize_legend, output_filename, legend_order)
 
     return fig
+
 
 def phase_space_composite_plot(
     pred_composites: List[Dict[int, Tuple[np.ndarray, np.ndarray]]],
@@ -237,77 +244,17 @@ def phase_space_composite_plot(
     marker_interval: int = 5,
     legend_loc: str = 'best',
 ) -> plt.Figure:
-    """Create a composite phase space trajectory plot showing RMM1 vs RMM2.
-
-    Composite plots aggregate trajectories by initialization phase, showing
-    the average behavior for each phase.
-
-    Args:
-        pred_composites: List of composite dictionaries for each prediction source.
-            Each composite is a dict mapping phase (1-8) to (rmm1, rmm2) tuple.
-        gt_composites: Ground truth composite dictionary mapping phase to (rmm1, rmm2)
-        labels: Labels for each prediction source
-        gt_label: Label for ground truth
-        bom_composites: Optional BoM composite dictionary
-        title: Plot title
-        output_filename: Path to save figure
-        figsize: Figure size
-        xlim: X-axis limits
-        ylim: Y-axis limits
-        colormap: Colormap name for predictions
-        fontsize_title: Font size for title
-        fontsize_axis_label: Font size for axis labels
-        fontsize_region_label: Font size for region labels
-        fontsize_phase_label: Font size for phase labels
-        fontsize_legend: Font size for legend
-        fontweight_title: Font weight for title
-        fontweight_title_label: Font weight for title label (e.g., "(a)")
-        font_family: Font family
-        marker_interval: Interval for trajectory markers
-        legend_loc: Legend location
-
-    Returns:
-        Matplotlib figure object
-    """
-
-    # Set font family if provided
+    """Plot per-phase composite trajectories; each composite maps init phase (1-8) to (rmm1, rmm2) means."""
     if font_family:
         plt.rcParams['font.family'] = font_family
 
-    def _add_region_labels():
-        # Position labels based on xlim/ylim (at ~87.5% of the limit)
-        x_pos = xlim[1] * 0.857  # 1.5/1.75
-        y_pos = ylim[1] * 0.857
-        font_props = {'fontsize': fontsize_region_label, 'ha': 'center', 'va': 'center'}
-        if font_family:
-            font_props['fontfamily'] = font_family
-
-        plt.text(0, -y_pos, "Indian Ocean", **font_props)
-        plt.text(x_pos, 0, "Maritime Continent", rotation=-90, **font_props)
-        plt.text(0, y_pos, "Western Pacific", **font_props)
-        plt.text(-x_pos, 0, "Western Hem.& Africa", rotation=90, **font_props)
-
-    def _draw_phase_wedges():
-        # Scale radius based on xlim/ylim (use average of the two)
-        max_lim = (xlim[1] + ylim[1]) / 2
-        r = math.sqrt(2 * max_lim * max_lim)
-        phase_labels = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8']
-
-        for i in range(8):
-            angle = (5 + i) * np.pi / 4
-            x = np.cos(angle)
-            y = np.sin(angle)
-            plt.plot([0, r * x], [0, r * y], color='lightgray', lw=1.5, zorder=0)
-
-        font_props = {'fontsize': fontsize_phase_label, 'ha': 'center', 'va': 'center', 'color': 'gray'}
-        if font_family:
-            font_props['fontfamily'] = font_family
-
-        for i, label in enumerate(phase_labels):
-            angle = (4.5 + i) * np.pi / 4
-            x = max_lim * np.cos(angle)
-            y = max_lim * np.sin(angle)
-            plt.text(x, y, label, **font_props)
+    def _plot_composite(composite, color, label, **line_kwargs):
+        """Draw every phase trajectory of one composite with start and interval markers."""
+        for _, (rmm1, rmm2) in composite.items():
+            plt.plot(rmm1, rmm2, color=color, label=label, linewidth=2, **line_kwargs)
+            plt.plot(rmm1[0], rmm2[0], color=color, marker='o')  # start
+            for lt in range(marker_interval, len(rmm1), marker_interval):
+                plt.plot(rmm1[lt], rmm2[lt], color=color, marker='.')
 
     assert len(labels) == len(pred_composites), 'Number of labels must match number of prediction sources'
     fig = plt.figure(figsize=figsize)
@@ -317,79 +264,76 @@ def phase_space_composite_plot(
     unit_circle = mpatches.Circle((0, 0), 1, edgecolor='lightgray', facecolor='none', linewidth=1.5, linestyle='-', zorder=0)
     ax.add_patch(unit_circle)
 
-    # Use configured colormap
     colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
-
     for i, label in enumerate(labels):
-        for _, (rmm1, rmm2) in pred_composites[i].items():
-            plt.plot(rmm1, rmm2, color=colors[i], alpha=0.8, label=label, linewidth=2)
-            plt.plot(rmm1[0], rmm2[0], color=colors[i], marker='o')  # start
-            for lt in range(marker_interval, len(rmm1), marker_interval):
-                plt.plot(rmm1[lt], rmm2[lt], color=colors[i], marker='.')
-
-    for _, (rmm1, rmm2) in gt_composites.items():
-        plt.plot(rmm1, rmm2, color='black', linestyle='--', alpha=0.75, label=gt_label, linewidth=2)
-        plt.plot(rmm1[0], rmm2[0], color='black', marker='o')  # start
-        for lt in range(marker_interval, len(rmm1), marker_interval):
-            plt.plot(rmm1[lt], rmm2[lt], color='black', marker='.')
-
+        _plot_composite(pred_composites[i], colors[i], label, alpha=0.8)
+    _plot_composite(gt_composites, 'black', gt_label, linestyle='--', alpha=0.75)
     if bom_composites is not None:
-        for _, (rmm1, rmm2) in bom_composites.items():
-            plt.plot(rmm1, rmm2, color='lightgray', linestyle='--', alpha=0.75, label='BoM', linewidth=2)
-            plt.plot(rmm1[0], rmm2[0], color='lightgray', marker='o')  # start
-            for lt in range(marker_interval, len(rmm1), marker_interval):
-                plt.plot(rmm1[lt], rmm2[lt], color='lightgray', marker='.')
+        _plot_composite(bom_composites, 'lightgray', 'BoM', linestyle='--', alpha=0.75)
 
     plt.axhline(0, color='lightgray', linewidth=1.5, zorder=0)
     plt.axvline(0, color='lightgray', linewidth=1.5, zorder=0)
-    _draw_phase_wedges()
-    _add_region_labels()
-
-    # Apply font settings to axis labels
-    font_props = {'fontsize': fontsize_axis_label}
-    if font_family:
-        font_props['fontfamily'] = font_family
-    plt.xlabel("RMM1", **font_props)
-    plt.ylabel("RMM2", **font_props)
-
-    # Handle title with optional bold label support (e.g., "(a)")
-    if title:
-        # Check if title starts with a label like "(a)", "(b)", etc.
-        if title.startswith('(') and ')' in title[:5]:
-            close_paren = title.index(')')
-            label_part = title[:close_paren+1]
-            rest_part = title[close_paren+1:].strip()
-            if fontweight_title_label:
-                plt.title(label_part + ' ' + rest_part, fontsize=fontsize_title,
-                         fontweight=fontweight_title, pad=10)
-                # Make just the label bold if specified
-                ax.title.set_text('')
-                ax.text(0.5, 1.02, label_part, transform=ax.transAxes,
-                       fontsize=fontsize_title, fontweight=fontweight_title_label,
-                       ha='center', va='bottom')
-                ax.text(0.5 + len(label_part)*0.012, 1.02, rest_part, transform=ax.transAxes,
-                       fontsize=fontsize_title, fontweight=fontweight_title,
-                       ha='left', va='bottom')
-            else:
-                plt.title(title, fontsize=fontsize_title, fontweight=fontweight_title, pad=10)
-        else:
-            plt.title(title, fontsize=fontsize_title, fontweight=fontweight_title, pad=10)
-
-    plt.xlim(xlim)
-    plt.ylim(ylim)
-    plt.gca().set_aspect('equal')
-
-    # prevent duplicate legend entries
-    handles, legend_labels = plt.gca().get_legend_handles_labels()
-    unique = dict(zip(legend_labels, handles))
-    plt.legend(unique.values(), unique.keys(), loc=legend_loc, fontsize=fontsize_legend)
-
-    plt.tight_layout()
-    if output_filename:
-        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
-        plt.close()
+    _draw_phase_wedges(xlim, ylim, 1.5, fontsize_phase_label, font_family)
+    _add_region_labels(xlim, ylim, 0.857, fontsize_region_label, font_family)  # 1.5/1.75
+    _phase_space_axis_labels_and_title(ax, title, fontsize_title, fontsize_axis_label, fontweight_title, fontweight_title_label, font_family)
+    _finish_phase_space(xlim, ylim, legend_loc, fontsize_legend, output_filename)
 
     return fig
+
+
+# =============================================================================
+# Lead-time line plots
+# =============================================================================
+
+def _plot_lead_time_lines(ax, lead_times, data, labels, colors, linestyles, linewidth, significance):
+    """Plot one line per model; models with a significance mask are faded where not significant."""
+    nonsig_alpha = 0.25
+    for i, label in enumerate(labels):
+        if significance is not None and i < len(significance):
+            # Full line at low alpha as base (no label; legend uses a proxy)
+            ax.plot(lead_times[i], data[i], color=colors[i], linestyle=linestyles[i], linewidth=linewidth, alpha=nonsig_alpha)
+            # Overdraw significant segments at full opacity
+            if significance[i].any():
+                y_sig = np.where(significance[i], data[i], np.nan)
+                ax.plot(lead_times[i], y_sig, color=colors[i], linestyle=linestyles[i], linewidth=linewidth, alpha=1.0)
+            # Full-opacity legend proxy
+            ax.plot([], [], color=colors[i], linestyle=linestyles[i], linewidth=linewidth, alpha=1.0, label=label)
+        else:
+            ax.plot(lead_times[i], data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
+
+
+def _style_lead_time_axis(
+    ax, *, title, x_label, y_label, xlim, ylim, show_legend, legend_loc,
+    fontsize_title, fontsize_axis_label, fontsize_tick_label, fontsize_legend,
+    fontweight_title, fontweight_title_label, font_family,
+):
+    """Apply labels, title, limits, 10-day x tick labels and legend to a lead-time axis."""
+    if font_family:
+        plt.rcParams['font.family'] = font_family
+
+    label_kwargs = {'fontsize': fontsize_axis_label}
+    if font_family:
+        label_kwargs['family'] = font_family
+    if x_label:
+        ax.set_xlabel(x_label, **label_kwargs)
+    if y_label:
+        ax.set_ylabel(y_label, **label_kwargs)
+    if title:
+        _set_title(ax, title, fontsize_title, fontweight_title, fontweight_title_label, font_family)
+
+    if ylim:
+        ax.set_ylim(ylim)
+    if xlim:
+        ax.set_xlim(xlim)
+
+    # Tick every day, label every 10 days
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{int(x)}" if x % 10 == 0 else ""))
+    ax.tick_params(axis='both', labelsize=fontsize_tick_label)
+
+    if show_legend:
+        ax.legend(loc=legend_loc, fontsize=fontsize_legend)
+
 
 def lead_time_skill_subplot(
     lead_times: Sequence[np.ndarray],
@@ -422,168 +366,52 @@ def lead_time_skill_subplot(
     bmsea: Optional[Sequence[np.ndarray]] = None,
     bmsep: Optional[Sequence[np.ndarray]] = None,
     combined: bool = False,
-    # Bootstrap CI parameters
-    ci_lower: Optional[Sequence[np.ndarray]] = None,
-    ci_upper: Optional[Sequence[np.ndarray]] = None,
-    ci_alpha: float = 0.15,
-    # Significance coloring: True at lead times where improvement is significant
+    # Significance coloring: True at lead times where the difference vs baseline is significant
     significance: Optional[List[np.ndarray]] = None,
 ) -> plt.Axes:
-    """Unified plotting function for lead time metrics (BCOR or BMSE).
-
-    Args:
-        lead_times: Lead time arrays for each model
-        metric_data: Metric values (BCOR or combined BMSE)
-        labels: Model labels
-        metric_type: 'bcor' or 'bmse'
-        ax: Matplotlib axes (creates new if None)
-        title: Plot title
-        x_label: X-axis label (None to hide)
-        y_label: Y-axis label (None to hide, defaults based on metric_type)
-        show_legend: Whether to show legend
-        ylim: Y-axis limits
-        xlim: X-axis limits
-        threshold: Horizontal threshold line value
-        threshold_style: Dict of threshold line style kwargs
-        fontsize_*: Font sizes for various elements
-        fontweight_title: Font weight for title ('normal', 'bold', etc.)
-        colormap: Colormap name
-        legend_loc: Legend location
-        bmsea: BMSE amplitude errors (for bmse type with combined=False)
-        bmsep: BMSE phase errors (for bmse type with combined=False)
-        combined: Whether to plot combined BMSE (for bmse type)
-        ci_lower: Lower CI bounds per model (same shape as metric_data)
-        ci_upper: Upper CI bounds per model (same shape as metric_data)
-        ci_alpha: Transparency for CI shading (default 0.15)
-
-    Returns:
-        Matplotlib axes object
-    """
-    # Set default y_label based on metric type if not provided
+    """Plot BCOR or BMSE versus lead time on one axis (BMSE as given in metric_data unless separate bmsea/bmsep with combined=False)."""
+    # Defaults based on metric type
     if y_label is None:
         if metric_type == 'bcor':
             y_label = 'Bivariate correlation'
         elif metric_type == 'bmse':
             y_label = 'Bivariate mean squared error'
-
-    # Set default ylim based on metric type if not provided
     if ylim is None:
         if metric_type == 'bcor':
             ylim = (0.3, 1.0)
         elif metric_type == 'bmse':
             ylim = (0, 2.0)
-
-    # Set default threshold for bcor
     if threshold is None and metric_type == 'bcor':
         threshold = 0.5
-
-    # Default threshold style
     if threshold_style is None:
         threshold_style = {'color': 'gray', 'linestyle': '--', 'linewidth': 1.5}
 
-    # Create axes if not provided
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 5))
-
-    # Generate colors if not provided
     if colors is None:
         colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
-
-    # Use default linestyles if not provided
     if linestyles is None:
         linestyles = ['-'] * len(labels)
 
-    has_ci = ci_lower is not None and ci_upper is not None
-    has_sig = significance is not None
-
-    def _plot_with_significance(ax, x, y, color, linestyle, label, linewidth, sig_mask):
-        """Plot a line with full opacity where significant, low alpha where not."""
-        nonsig_alpha = 0.25
-        # Draw full line at low alpha as base (no label — legend handled separately)
-        ax.plot(x, y, color=color, linestyle=linestyle, linewidth=linewidth, alpha=nonsig_alpha)
-        # Overdraw significant segments at full opacity
-        if sig_mask.any():
-            y_sig = np.where(sig_mask, y, np.nan)
-            ax.plot(x, y_sig, color=color, linestyle=linestyle, linewidth=linewidth, alpha=1.0)
-        # Add a full-opacity proxy for the legend
-        ax.plot([], [], color=color, linestyle=linestyle, linewidth=linewidth, alpha=1.0, label=label)
-
-    # Plot data
-    if metric_type == 'bcor':
-        for i, label in enumerate(labels):
-            if has_sig and i < len(significance):
-                _plot_with_significance(ax, lead_times[i], metric_data[i], colors[i], linestyles[i], label, linewidth, significance[i])
-            else:
-                ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
-            if has_ci:
-                ax.fill_between(lead_times[i], ci_lower[i], ci_upper[i], color=colors[i], alpha=ci_alpha)
+    if metric_type == 'bcor' or (metric_type == 'bmse' and (combined or (bmsea is None and bmsep is None))):
+        _plot_lead_time_lines(ax, lead_times, metric_data, labels, colors, linestyles, linewidth, significance)
     elif metric_type == 'bmse':
-        if combined or (bmsea is None and bmsep is None):
-            for i, label in enumerate(labels):
-                if has_sig and i < len(significance):
-                    _plot_with_significance(ax, lead_times[i], metric_data[i], colors[i], linestyles[i], label, linewidth, significance[i])
-                else:
-                    ax.plot(lead_times[i], metric_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
-                if has_ci:
-                    ax.fill_between(lead_times[i], ci_lower[i], ci_upper[i], color=colors[i], alpha=ci_alpha)
-        else:
-            assert bmsea is not None and bmsep is not None, 'Must provide bmsea and bmsep for non-combined BMSE plot'
-            for i, label in enumerate(labels):
-                ax.plot(lead_times[i], bmsea[i], color=colors[i], linestyle=linestyles[i], label=f'{label} (Amplitude)', linewidth=linewidth)
-                ax.plot(lead_times[i], bmsep[i], color=colors[i], linestyle='--', label=f'{label} (Phase)', linewidth=linewidth)
+        assert bmsea is not None and bmsep is not None, 'Must provide bmsea and bmsep for non-combined BMSE plot'
+        for i, label in enumerate(labels):
+            ax.plot(lead_times[i], bmsea[i], color=colors[i], linestyle=linestyles[i], label=f'{label} (Amplitude)', linewidth=linewidth)
+            ax.plot(lead_times[i], bmsep[i], color=colors[i], linestyle='--', label=f'{label} (Phase)', linewidth=linewidth)
 
-    # Add threshold line if specified
     if threshold is not None:
         ax.axhline(threshold, **threshold_style)
 
-    # Set font family if specified
-    if font_family:
-        plt.rcParams['font.family'] = font_family
-
-    # Set labels and title
-    label_kwargs = {'fontsize': fontsize_axis_label}
-    if font_family:
-        label_kwargs['family'] = font_family
-
-    if x_label:
-        ax.set_xlabel(x_label, **label_kwargs)
-    if y_label:
-        ax.set_ylabel(y_label, **label_kwargs)
-    if title:
-        # Check if we should bold only the label part (e.g., "(a)")
-        import re
-        label_match = re.match(r'^(\([a-zA-Z0-9]+\))\s*(.*)$', title)
-        if label_match and fontweight_title_label == 'bold':
-            label_part = label_match.group(1)
-            text_part = label_match.group(2)
-            title_str = f"$\\mathbf{{{label_part}}}$ {text_part}"
-            title_kwargs = {'fontsize': fontsize_title}
-            if font_family:
-                title_kwargs['family'] = font_family
-            ax.set_title(title_str, **title_kwargs)
-        else:
-            title_kwargs = {'fontsize': fontsize_title, 'fontweight': fontweight_title}
-            if font_family:
-                title_kwargs['family'] = font_family
-            ax.set_title(title, **title_kwargs)
-
-    # Set limits
-    if ylim:
-        ax.set_ylim(ylim)
-    if xlim:
-        ax.set_xlim(xlim)
-
-    # Configure x-axis ticks
-    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{int(x)}" if x % 10 == 0 else ""))
-
-    # Configure tick label size
-    ax.tick_params(axis='both', labelsize=fontsize_tick_label)
-
-    # Add legend
-    if show_legend:
-        ax.legend(loc=legend_loc, fontsize=fontsize_legend)
-
+    _style_lead_time_axis(
+        ax, title=title, x_label=x_label, y_label=y_label, xlim=xlim, ylim=ylim,
+        show_legend=show_legend, legend_loc=legend_loc,
+        fontsize_title=fontsize_title, fontsize_axis_label=fontsize_axis_label,
+        fontsize_tick_label=fontsize_tick_label, fontsize_legend=fontsize_legend,
+        fontweight_title=fontweight_title, fontweight_title_label=fontweight_title_label,
+        font_family=font_family,
+    )
     return ax
 
 
@@ -598,46 +426,18 @@ def lead_time_bcor_bmse_plot(
     titles: Optional[Tuple[Optional[str], Optional[str]]] = (None, None),
     combined_bmse: bool = True,
     figsize: Tuple[float, float] = (16, 5),
-    bcor_ci_lower: Optional[Sequence[np.ndarray]] = None,
-    bcor_ci_upper: Optional[Sequence[np.ndarray]] = None,
-    bmse_ci_lower: Optional[Sequence[np.ndarray]] = None,
-    bmse_ci_upper: Optional[Sequence[np.ndarray]] = None,
     bcor_significance: Optional[List[np.ndarray]] = None,
     bmse_significance: Optional[List[np.ndarray]] = None,
     **plot_kwargs
 ) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
-    """Create side-by-side BCOR and BMSE plots.
-
-    Args:
-        lead_times: Lead time arrays for each model
-        correlations: Bivariate correlation arrays
-        bmsea: BMSE amplitude error arrays
-        bmsep: BMSE phase error arrays
-        labels: Model labels
-        output_filename: Path to save figure
-        titles: Tuple of (bcor_title, bmse_title)
-        combined_bmse: Whether to plot combined BMSE
-        figsize: Figure size
-        bcor_ci_lower: Lower CI bounds for BCOR per model
-        bcor_ci_upper: Upper CI bounds for BCOR per model
-        bmse_ci_lower: Lower CI bounds for combined BMSE per model
-        bmse_ci_upper: Upper CI bounds for combined BMSE per model
-        bcor_significance: List of boolean arrays per model (excluding baseline) for BCOR color coding
-        bmse_significance: List of boolean arrays per model (excluding baseline) for BMSE color coding
-        **plot_kwargs: Additional kwargs passed to lead_time_skill_subplot
-
-    Returns:
-        Figure and tuple of (bcor_ax, bmse_ax)
-    """
+    """Plot BCOR (left) and BMSE (right) versus lead time; plot_kwargs go to lead_time_skill_subplot."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
-    # Compute combined BMSE if needed
     if combined_bmse:
         bmse_combined = [bmsea[i] + bmsep[i] for i in range(len(bmsea))]
     else:
         bmse_combined = None
 
-    # Plot BCOR
     lead_time_skill_subplot(
         lead_times=lead_times,
         metric_data=correlations,
@@ -645,13 +445,9 @@ def lead_time_bcor_bmse_plot(
         metric_type='bcor',
         ax=ax1,
         title=titles[0],
-        ci_lower=bcor_ci_lower,
-        ci_upper=bcor_ci_upper,
         significance=bcor_significance,
         **plot_kwargs
     )
-
-    # Plot BMSE
     lead_time_skill_subplot(
         lead_times=lead_times,
         metric_data=bmse_combined if combined_bmse else bmsea,
@@ -662,18 +458,12 @@ def lead_time_bcor_bmse_plot(
         bmsea=bmsea if not combined_bmse else None,
         bmsep=bmsep if not combined_bmse else None,
         combined=combined_bmse,
-        ci_lower=bmse_ci_lower,
-        ci_upper=bmse_ci_upper,
         significance=bmse_significance,
         **plot_kwargs
     )
 
     plt.tight_layout()
-
-    if output_filename:
-        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
-        plt.close()
-
+    _save_and_close(output_filename)
     return fig, (ax1, ax2)
 
 
@@ -692,30 +482,9 @@ def lead_time_bmse_decomp_plot(
     phase_significance: Optional[List[np.ndarray]] = None,
     **plot_kwargs
 ) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
-    """Side-by-side plot of the BMSE amplitude-error (BMSEa) and phase-error (BMSEp) components.
-
-    Unlike lead_time_bcor_bmse_plot (which shows combined BMSE), this decomposes
-    BMSE into its two error components, each on its own panel with its own
-    per-lead significance coloring.
-
-    Args:
-        lead_times: Lead time arrays for each model
-        bmsea: BMSE amplitude-error component arrays per model
-        bmsep: BMSE phase-error component arrays per model
-        labels: Model labels
-        output_filename: Path to save figure
-        titles: Tuple of (bmsea_title, bmsep_title)
-        ylim_amplitude / ylim_phase: Optional y-limits per panel
-        amplitude_significance: Boolean arrays per model for BMSEa color coding
-        phase_significance: Boolean arrays per model for BMSEp color coding
-        **plot_kwargs: Additional kwargs passed to lead_time_skill_subplot
-
-    Returns:
-        Figure and tuple of (bmsea_ax, bmsep_ax)
-    """
+    """Plot the BMSE amplitude-error (BMSEa, left) and phase-error (BMSEp, right) components versus lead time."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
-    # Amplitude-error component (BMSEa)
     lead_time_skill_subplot(
         lead_times=lead_times,
         metric_data=bmsea,
@@ -728,8 +497,6 @@ def lead_time_bmse_decomp_plot(
         significance=amplitude_significance,
         **plot_kwargs
     )
-
-    # Phase-error component (BMSEp)
     lead_time_skill_subplot(
         lead_times=lead_times,
         metric_data=bmsep,
@@ -744,110 +511,7 @@ def lead_time_bmse_decomp_plot(
     )
 
     plt.tight_layout()
-
-    if output_filename:
-        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
-        plt.close()
-
-    return fig, (ax1, ax2)
-
-
-def lead_time_bias_plot(
-    lead_times: Sequence[np.ndarray],
-    amplitude_bias: Sequence[np.ndarray],
-    phase_bias: Sequence[np.ndarray],
-    labels: Sequence[str],
-    output_filename: Optional[str] = None,
-    *,
-    titles: Optional[Tuple[Optional[str], Optional[str]]] = (None, None),
-    figsize: Tuple[float, float] = (16, 5),
-    amplitude_ci_lower: Optional[Sequence[np.ndarray]] = None,
-    amplitude_ci_upper: Optional[Sequence[np.ndarray]] = None,
-    phase_ci_lower: Optional[Sequence[np.ndarray]] = None,
-    phase_ci_upper: Optional[Sequence[np.ndarray]] = None,
-    amplitude_significance: Optional[List[np.ndarray]] = None,
-    phase_significance: Optional[List[np.ndarray]] = None,
-    **plot_kwargs
-) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
-    """Create side-by-side amplitude and phase bias plots.
-
-    Args:
-        lead_times: Lead time arrays for each model
-        amplitude_bias: Amplitude bias arrays for each model
-        phase_bias: Phase bias arrays for each model
-        labels: Model labels
-        output_filename: Path to save figure
-        titles: Tuple of (amplitude_title, phase_title)
-        figsize: Figure size
-        amplitude_ci_lower: Lower CI bounds for amplitude bias per model
-        amplitude_ci_upper: Upper CI bounds for amplitude bias per model
-        phase_ci_lower: Lower CI bounds for phase bias per model
-        phase_ci_upper: Upper CI bounds for phase bias per model
-        amplitude_significance: List of boolean arrays per model for amplitude-bias color coding
-        phase_significance: List of boolean arrays per model for phase-bias color coding
-        **plot_kwargs: Additional kwargs passed to lead_time_bias_subplot
-                       (can include ylim_amplitude and ylim_phase for separate y-limits)
-
-    Returns:
-        Figure and tuple of (amplitude_ax, phase_ax)
-    """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
-
-    # Extract amplitude and phase specific parameters if provided
-    ylim_amplitude = plot_kwargs.pop('ylim_amplitude', None)
-    ylim_phase = plot_kwargs.pop('ylim_phase', None)
-    y_label_amplitude = plot_kwargs.pop('y_label_amplitude', None)
-    y_label_phase = plot_kwargs.pop('y_label_phase', None)
-
-    # Extract line style parameters
-    colors = plot_kwargs.pop('colors', None)
-    linestyles = plot_kwargs.pop('linestyles', None)
-    linewidth = plot_kwargs.pop('linewidth', 2)
-
-    # Plot amplitude bias
-    lead_time_bias_subplot(
-        lead_times=lead_times,
-        bias_data=amplitude_bias,
-        labels=labels,
-        bias_type='amplitude',
-        ax=ax1,
-        title=titles[0],
-        ylim=ylim_amplitude,
-        y_label=y_label_amplitude,
-        colors=colors,
-        linestyles=linestyles,
-        linewidth=linewidth,
-        ci_lower=amplitude_ci_lower,
-        ci_upper=amplitude_ci_upper,
-        significance=amplitude_significance,
-        **plot_kwargs
-    )
-
-    # Plot phase bias
-    lead_time_bias_subplot(
-        lead_times=lead_times,
-        bias_data=phase_bias,
-        labels=labels,
-        bias_type='phase',
-        ax=ax2,
-        title=titles[1],
-        ylim=ylim_phase,
-        y_label=y_label_phase,
-        colors=colors,
-        linestyles=linestyles,
-        linewidth=linewidth,
-        ci_lower=phase_ci_lower,
-        ci_upper=phase_ci_upper,
-        significance=phase_significance,
-        **plot_kwargs
-    )
-
-    plt.tight_layout()
-
-    if output_filename:
-        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
-        plt.close()
-
+    _save_and_close(output_filename)
     return fig, (ax1, ax2)
 
 
@@ -877,137 +541,90 @@ def lead_time_bias_subplot(
     linestyles: Optional[List[str]] = None,
     linewidth: float = 2,
     legend_loc: str = 'best',
-    ci_lower: Optional[Sequence[np.ndarray]] = None,
-    ci_upper: Optional[Sequence[np.ndarray]] = None,
-    ci_alpha: float = 0.15,
     significance: Optional[List[np.ndarray]] = None,
 ) -> plt.Axes:
-    """Plot a single bias subplot (amplitude or phase).
-
-    Args:
-        lead_times: Lead time arrays for each model
-        bias_data: Bias values for each model
-        labels: Model labels
-        bias_type: Type of bias ('amplitude' or 'phase')
-        ax: Matplotlib axes (creates new if None)
-        title: Plot title
-        x_label: X-axis label
-        y_label: Y-axis label (defaults based on bias_type)
-        show_legend: Whether to show legend
-        ylim: Y-axis limits
-        xlim: X-axis limits
-        show_zero_line: Whether to show horizontal line at y=0
-        fontsize_title: Font size for title
-        fontsize_axis_label: Font size for axis labels
-        fontsize_tick_label: Font size for tick labels
-        fontsize_legend: Font size for legend
-        fontweight_title: Font weight for title
-        fontweight_title_label: Font weight for title label (e.g., "(a)")
-        font_family: Font family
-        colormap: Colormap name
-        legend_loc: Legend location
-
-    Returns:
-        Matplotlib axes object
-    """
-    # Set default y_label based on bias type if not provided
+    """Plot amplitude or phase bias versus lead time on one axis."""
     if y_label is None:
         if bias_type == 'amplitude':
             y_label = 'Amplitude bias'
         elif bias_type == 'phase':
             y_label = 'Phase bias (radians)'
-
-    # Set default ylim if not provided
     if ylim is None:
         ylim = (-1, 0.5)
 
-    # Create axes if not provided
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 5))
-
-    # Generate colors if not provided
     if colors is None:
         colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, len(labels)))
-
-    # Use default linestyles if not provided
     if linestyles is None:
         linestyles = ['-'] * len(labels)
 
-    has_ci = ci_lower is not None and ci_upper is not None
-    has_sig = significance is not None
+    _plot_lead_time_lines(ax, lead_times, bias_data, labels, colors, linestyles, linewidth, significance)
 
-    nonsig_alpha = 0.25
-
-    # Plot data
-    for i, label in enumerate(labels):
-        if has_sig and i < len(significance):
-            # Full line at low alpha as base (no label)
-            ax.plot(lead_times[i], bias_data[i], color=colors[i], linestyle=linestyles[i], linewidth=linewidth, alpha=nonsig_alpha)
-            # Overdraw significant segments at full opacity
-            if significance[i].any():
-                y_sig = np.where(significance[i], bias_data[i], np.nan)
-                ax.plot(lead_times[i], y_sig, color=colors[i], linestyle=linestyles[i], linewidth=linewidth, alpha=1.0)
-            # Full-opacity legend proxy
-            ax.plot([], [], color=colors[i], linestyle=linestyles[i], linewidth=linewidth, alpha=1.0, label=label)
-        else:
-            ax.plot(lead_times[i], bias_data[i], color=colors[i], linestyle=linestyles[i], label=label, linewidth=linewidth)
-        if has_ci:
-            ax.fill_between(lead_times[i], ci_lower[i], ci_upper[i], color=colors[i], alpha=ci_alpha)
-
-    # Add zero line if specified
     if show_zero_line:
         ax.axhline(0, color='gray', linestyle='--', linewidth=1.5, zorder=0)
 
-    # Set font family if specified
-    if font_family:
-        plt.rcParams['font.family'] = font_family
-
-    # Set labels and title
-    label_kwargs = {'fontsize': fontsize_axis_label}
-    if font_family:
-        label_kwargs['family'] = font_family
-
-    if x_label:
-        ax.set_xlabel(x_label, **label_kwargs)
-    if y_label:
-        ax.set_ylabel(y_label, **label_kwargs)
-
-    if title:
-        # Check if we should bold only the label part (e.g., "(a)")
-        import re
-        label_match = re.match(r'^(\([a-zA-Z0-9]+\))\s*(.*)$', title)
-        if label_match and fontweight_title_label == 'bold':
-            label_part = label_match.group(1)
-            text_part = label_match.group(2)
-            title_str = f"$\\mathbf{{{label_part}}}$ {text_part}"
-            title_kwargs = {'fontsize': fontsize_title}
-            if font_family:
-                title_kwargs['family'] = font_family
-            ax.set_title(title_str, **title_kwargs)
-        else:
-            title_kwargs = {'fontsize': fontsize_title, 'fontweight': fontweight_title}
-            if font_family:
-                title_kwargs['family'] = font_family
-            ax.set_title(title, **title_kwargs)
-
-    # Set limits
-    if ylim:
-        ax.set_ylim(ylim)
-    if xlim:
-        ax.set_xlim(xlim)
-
-    # Configure x-axis ticks
-    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{int(x)}" if x % 10 == 0 else ""))
-
-    # Configure tick label size
-    ax.tick_params(axis='both', labelsize=fontsize_tick_label)
-
-    # Add legend
-    if show_legend:
-        ax.legend(loc=legend_loc, fontsize=fontsize_legend)
-
+    _style_lead_time_axis(
+        ax, title=title, x_label=x_label, y_label=y_label, xlim=xlim, ylim=ylim,
+        show_legend=show_legend, legend_loc=legend_loc,
+        fontsize_title=fontsize_title, fontsize_axis_label=fontsize_axis_label,
+        fontsize_tick_label=fontsize_tick_label, fontsize_legend=fontsize_legend,
+        fontweight_title=fontweight_title, fontweight_title_label=fontweight_title_label,
+        font_family=font_family,
+    )
     return ax
+
+
+def _pop_bias_panel_kwargs(plot_kwargs):
+    """Split amplitude- and phase-panel kwargs (ylim_*, y_label_*) out of plot_kwargs."""
+    amplitude_kwargs = {'ylim': plot_kwargs.pop('ylim_amplitude', None), 'y_label': plot_kwargs.pop('y_label_amplitude', None)}
+    phase_kwargs = {'ylim': plot_kwargs.pop('ylim_phase', None), 'y_label': plot_kwargs.pop('y_label_phase', None)}
+    return amplitude_kwargs, phase_kwargs
+
+
+def lead_time_bias_plot(
+    lead_times: Sequence[np.ndarray],
+    amplitude_bias: Sequence[np.ndarray],
+    phase_bias: Sequence[np.ndarray],
+    labels: Sequence[str],
+    output_filename: Optional[str] = None,
+    *,
+    titles: Optional[Tuple[Optional[str], Optional[str]]] = (None, None),
+    figsize: Tuple[float, float] = (16, 5),
+    amplitude_significance: Optional[List[np.ndarray]] = None,
+    phase_significance: Optional[List[np.ndarray]] = None,
+    **plot_kwargs
+) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
+    """Plot amplitude (left) and phase (right) bias versus lead time; accepts ylim_/y_label_ amplitude/phase kwargs."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    amplitude_kwargs, phase_kwargs = _pop_bias_panel_kwargs(plot_kwargs)
+
+    lead_time_bias_subplot(
+        lead_times=lead_times,
+        bias_data=amplitude_bias,
+        labels=labels,
+        bias_type='amplitude',
+        ax=ax1,
+        title=titles[0],
+        significance=amplitude_significance,
+        **amplitude_kwargs,
+        **plot_kwargs
+    )
+    lead_time_bias_subplot(
+        lead_times=lead_times,
+        bias_data=phase_bias,
+        labels=labels,
+        bias_type='phase',
+        ax=ax2,
+        title=titles[1],
+        significance=phase_significance,
+        **phase_kwargs,
+        **plot_kwargs
+    )
+
+    plt.tight_layout()
+    _save_and_close(output_filename)
+    return fig, (ax1, ax2)
 
 
 def lead_time_bias_amplitude_grid(
@@ -1023,113 +640,30 @@ def lead_time_bias_amplitude_grid(
     figsize: Tuple[float, float] = (16, 10),
     **plot_kwargs
 ) -> Tuple[plt.Figure, np.ndarray]:
-    """Create 2x2 grid of amplitude-filtered bias plots.
-
-    Grid layout:
-        Row 1: Low amplitude - Amplitude bias (left), Phase bias (right)
-        Row 2: High amplitude - Amplitude bias (left), Phase bias (right)
-
-    Args:
-        lead_times: Lead time arrays for each model
-        low_amp_amplitude_bias: Low amplitude forecast amplitude bias
-        low_amp_phase_bias: Low amplitude forecast phase bias
-        high_amp_amplitude_bias: High amplitude forecast amplitude bias
-        high_amp_phase_bias: High amplitude forecast phase bias
-        labels: Model labels
-        output_filename: Path to save figure
-        titles: Tuple of 4 titles (low_amp, low_phase, high_amp, high_phase)
-        figsize: Figure size
-        **plot_kwargs: Additional kwargs passed to lead_time_bias_subplot
-                       (can include ylim_amplitude and ylim_phase for separate y-limits)
-
-    Returns:
-        Figure and 2x2 array of axes
-    """
+    """Plot a 2x2 grid of amplitude/phase bias (columns) for low/high-amplitude forecasts (rows)."""
     fig, axes = plt.subplots(2, 2, figsize=figsize)
+    amplitude_kwargs, phase_kwargs = _pop_bias_panel_kwargs(plot_kwargs)
 
-    # Extract amplitude and phase specific parameters if provided
-    ylim_amplitude = plot_kwargs.pop('ylim_amplitude', None)
-    ylim_phase = plot_kwargs.pop('ylim_phase', None)
-    y_label_amplitude = plot_kwargs.pop('y_label_amplitude', None)
-    y_label_phase = plot_kwargs.pop('y_label_phase', None)
-
-    # Extract line style parameters
-    colors = plot_kwargs.pop('colors', None)
-    linestyles = plot_kwargs.pop('linestyles', None)
-    linewidth = plot_kwargs.pop('linewidth', 2)
-
-    # Row 1: Low amplitude forecasts
-    # Low amplitude - Amplitude bias (top-left)
-    lead_time_bias_subplot(
-        lead_times=lead_times,
-        bias_data=low_amp_amplitude_bias,
-        labels=labels,
-        bias_type='amplitude',
-        ax=axes[0, 0],
-        title=titles[0],
-        ylim=ylim_amplitude,
-        y_label=y_label_amplitude,
-        colors=colors,
-        linestyles=linestyles,
-        linewidth=linewidth,
-        **plot_kwargs
-    )
-
-    # Low amplitude - Phase bias (top-right)
-    lead_time_bias_subplot(
-        lead_times=lead_times,
-        bias_data=low_amp_phase_bias,
-        labels=labels,
-        bias_type='phase',
-        ax=axes[0, 1],
-        title=titles[1],
-        ylim=ylim_phase,
-        y_label=y_label_phase,
-        colors=colors,
-        linestyles=linestyles,
-        linewidth=linewidth,
-        **plot_kwargs
-    )
-
-    # Row 2: High amplitude forecasts
-    # High amplitude - Amplitude bias (bottom-left)
-    lead_time_bias_subplot(
-        lead_times=lead_times,
-        bias_data=high_amp_amplitude_bias,
-        labels=labels,
-        bias_type='amplitude',
-        ax=axes[1, 0],
-        title=titles[2],
-        ylim=ylim_amplitude,
-        y_label=y_label_amplitude,
-        colors=colors,
-        linestyles=linestyles,
-        linewidth=linewidth,
-        **plot_kwargs
-    )
-
-    # High amplitude - Phase bias (bottom-right)
-    lead_time_bias_subplot(
-        lead_times=lead_times,
-        bias_data=high_amp_phase_bias,
-        labels=labels,
-        bias_type='phase',
-        ax=axes[1, 1],
-        title=titles[3],
-        ylim=ylim_phase,
-        y_label=y_label_phase,
-        colors=colors,
-        linestyles=linestyles,
-        linewidth=linewidth,
-        **plot_kwargs
-    )
+    panels = [
+        (axes[0, 0], low_amp_amplitude_bias, 'amplitude', amplitude_kwargs),
+        (axes[0, 1], low_amp_phase_bias, 'phase', phase_kwargs),
+        (axes[1, 0], high_amp_amplitude_bias, 'amplitude', amplitude_kwargs),
+        (axes[1, 1], high_amp_phase_bias, 'phase', phase_kwargs),
+    ]
+    for (ax, bias_data, bias_type, panel_kwargs), title in zip(panels, titles):
+        lead_time_bias_subplot(
+            lead_times=lead_times,
+            bias_data=bias_data,
+            labels=labels,
+            bias_type=bias_type,
+            ax=ax,
+            title=title,
+            **panel_kwargs,
+            **plot_kwargs
+        )
 
     plt.tight_layout()
-
-    if output_filename:
-        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
-        plt.close()
-
+    _save_and_close(output_filename)
     return fig, axes
 
 
@@ -1153,98 +687,47 @@ def lead_time_bcor_bmse_amplitude_grid(
     high_amp_bmse_significance: Optional[List[np.ndarray]] = None,
     **plot_kwargs
 ) -> Tuple[plt.Figure, np.ndarray]:
-    """Create 2x2 grid of amplitude-filtered BCOR and BMSE plots.
-
-    Grid layout:
-        Row 1: Low amplitude BCOR (left), Low amplitude BMSE (right)
-        Row 2: High amplitude BCOR (left), High amplitude BMSE (right)
-
-    Args:
-        lead_times: Lead time arrays for each model
-        low_amp_correlations: Low amplitude bivariate correlations
-        low_amp_bmsea: Low amplitude BMSE amplitude errors
-        low_amp_bmsep: Low amplitude BMSE phase errors
-        high_amp_correlations: High amplitude bivariate correlations
-        high_amp_bmsea: High amplitude BMSE amplitude errors
-        high_amp_bmsep: High amplitude BMSE phase errors
-        labels: Model labels
-        output_filename: Path to save figure
-        titles: Tuple of 4 titles (low_bcor, low_bmse, high_bcor, high_bmse)
-        combined_bmse: Whether to plot combined BMSE
-        figsize: Figure size
-        **plot_kwargs: Additional kwargs passed to lead_time_metric_plot
-
-    Returns:
-        Figure and 2x2 array of axes
-    """
+    """Plot a 2x2 grid of BCOR/BMSE (columns) for low/high-amplitude forecasts (rows)."""
     fig, axes = plt.subplots(2, 2, figsize=figsize)
 
-    # Compute combined BMSE if needed
-    if combined_bmse:
-        low_bmse_combined = [low_amp_bmsea[i] + low_amp_bmsep[i] for i in range(len(low_amp_bmsea))]
-        high_bmse_combined = [high_amp_bmsea[i] + high_amp_bmsep[i] for i in range(len(high_amp_bmsea))]
-    else:
-        low_bmse_combined = None
-        high_bmse_combined = None
-
-    # Row 1: Low amplitude
-    lead_time_skill_subplot(
-        lead_times=lead_times,
-        metric_data=low_amp_correlations,
-        labels=labels,
-        metric_type='bcor',
-        ax=axes[0, 0],
-        title=titles[0],
-        significance=low_amp_bcor_significance,
-        **plot_kwargs
-    )
-    lead_time_skill_subplot(
-        lead_times=lead_times,
-        metric_data=low_bmse_combined if combined_bmse else low_amp_bmsea,
-        labels=labels,
-        metric_type='bmse',
-        ax=axes[0, 1],
-        title=titles[1],
-        bmsea=low_amp_bmsea if not combined_bmse else None,
-        bmsep=low_amp_bmsep if not combined_bmse else None,
-        combined=combined_bmse,
-        significance=low_amp_bmse_significance,
-        **plot_kwargs
-    )
-
-    # Row 2: High amplitude
-    lead_time_skill_subplot(
-        lead_times=lead_times,
-        metric_data=high_amp_correlations,
-        labels=labels,
-        metric_type='bcor',
-        ax=axes[1, 0],
-        title=titles[2],
-        significance=high_amp_bcor_significance,
-        **plot_kwargs
-    )
-    lead_time_skill_subplot(
-        lead_times=lead_times,
-        metric_data=high_bmse_combined if combined_bmse else high_amp_bmsea,
-        labels=labels,
-        metric_type='bmse',
-        ax=axes[1, 1],
-        title=titles[3],
-        bmsea=high_amp_bmsea if not combined_bmse else None,
-        bmsep=high_amp_bmsep if not combined_bmse else None,
-        combined=combined_bmse,
-        significance=high_amp_bmse_significance,
-        **plot_kwargs
-    )
+    rows = [
+        (low_amp_correlations, low_amp_bmsea, low_amp_bmsep, low_amp_bcor_significance, low_amp_bmse_significance),
+        (high_amp_correlations, high_amp_bmsea, high_amp_bmsep, high_amp_bcor_significance, high_amp_bmse_significance),
+    ]
+    for r, (correlations, bmsea, bmsep, bcor_sig, bmse_sig) in enumerate(rows):
+        bmse_combined = [bmsea[i] + bmsep[i] for i in range(len(bmsea))] if combined_bmse else None
+        lead_time_skill_subplot(
+            lead_times=lead_times,
+            metric_data=correlations,
+            labels=labels,
+            metric_type='bcor',
+            ax=axes[r, 0],
+            title=titles[2 * r],
+            significance=bcor_sig,
+            **plot_kwargs
+        )
+        lead_time_skill_subplot(
+            lead_times=lead_times,
+            metric_data=bmse_combined if combined_bmse else bmsea,
+            labels=labels,
+            metric_type='bmse',
+            ax=axes[r, 1],
+            title=titles[2 * r + 1],
+            bmsea=bmsea if not combined_bmse else None,
+            bmsep=bmsep if not combined_bmse else None,
+            combined=combined_bmse,
+            significance=bmse_sig,
+            **plot_kwargs
+        )
 
     plt.tight_layout()
-
-    if output_filename:
-        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
-        plt.close()
-
+    _save_and_close(output_filename)
     return fig, axes
 
+
+# =============================================================================
+# Heatmaps and EOFs
+# =============================================================================
 
 def bivariate_correlation_by_month_plot(
     bcor_dict: Dict[int, np.ndarray],
@@ -1266,30 +749,7 @@ def bivariate_correlation_by_month_plot(
     fontweight_title_label: Optional[str] = None,
     font_family: Optional[str] = None,
 ) -> plt.Figure:
-    """Create a contour plot of bivariate correlation by month and lead time.
-
-    Args:
-        bcor_dict: Dictionary mapping month (1-12) to correlation arrays
-        output_filename: Path to save figure
-        title: Plot title
-        x_label: X-axis label
-        y_label: Y-axis label
-        colorbar_label: Colorbar label
-        levels: Contour levels (defaults to np.linspace(0.1, 1.0, 10))
-        threshold: Threshold value for contour line
-        cmap: Colormap name
-        figsize: Figure size
-        fontsize_title: Font size for title
-        fontsize_axis_label: Font size for axis labels
-        fontsize_tick_label: Font size for tick labels
-        fontsize_colorbar_label: Font size for colorbar label
-        fontweight_title: Font weight for title
-        fontweight_title_label: Font weight for title label (e.g., "(a)")
-        font_family: Font family
-
-    Returns:
-        Matplotlib figure object
-    """
+    """Contour plot of BCOR by initialization month (x) and lead time (y), with a threshold contour."""
     if levels is None:
         levels = np.linspace(0.1, 1.0, 10)
 
@@ -1328,22 +788,7 @@ def bivariate_correlation_by_month_plot(
         ax.set_ylabel(y_label, **label_kwargs)
 
     if title:
-        # Check if we should bold only the label part (e.g., "(a)")
-        import re
-        label_match = re.match(r'^(\([a-zA-Z0-9]+\))\s*(.*)$', title)
-        if label_match and fontweight_title_label == 'bold':
-            label_part = label_match.group(1)
-            text_part = label_match.group(2)
-            title_str = f"$\\mathbf{{{label_part}}}$ {text_part}"
-            title_kwargs = {'fontsize': fontsize_title}
-            if font_family:
-                title_kwargs['family'] = font_family
-            ax.set_title(title_str, **title_kwargs)
-        else:
-            title_kwargs = {'fontsize': fontsize_title, 'fontweight': fontweight_title}
-            if font_family:
-                title_kwargs['family'] = font_family
-            ax.set_title(title, **title_kwargs)
+        _set_title(ax, title, fontsize_title, fontweight_title, fontweight_title_label, font_family)
 
     # Configure tick label size
     ax.tick_params(axis='both', labelsize=fontsize_tick_label)
@@ -1364,6 +809,7 @@ def bivariate_correlation_by_month_plot(
         plt.close()
 
     return fig
+
 
 def bivariate_correlation_vs_lead_time_heatmap(
     lead_times: Sequence[Sequence[Union[int, float]]],     # (N, T_i)
@@ -1401,41 +847,13 @@ def bivariate_correlation_vs_lead_time_heatmap(
     # Legend settings
     legend_loc: str = "upper right",
 ) -> Tuple[plt.Figure, List[plt.Axes]]:
-    """Create heatmaps showing bivariate correlation by lookback window and lead time.
+    """Plot one lookback (x) by lead time (y) BCOR heatmap per model, with an optional narrow FuXi panel in the middle.
 
-    Plots N heatmaps (one per model) with lookback windows on x-axis and lead times on y-axis.
-    Optionally includes a narrow FuXi reference heatmap. For each lookback column, draws a
-    horizontal bar at the first lead time where correlation falls below threshold.
-
-    Args:
-        lead_times: Lead time arrays for each model (N, T_i)
-        lookbacks: Lookback window arrays for each model (N, L_i)
-        correlations: Correlation arrays for each model (N, L_i, T_i)
-        labels: Model labels (N,)
-        output_filename: Path to save figure
-        threshold: Skill threshold value (default: 0.5)
-        bar_half_width: Half width of threshold bars in x-index units (default: 0.35)
-        fuxi_correlations: Optional FuXi correlation array (T_i,)
-        fontsize_*: Font sizes for various elements
-        fontweight_title: Font weight for title
-        fontweight_title_label: Font weight for title label (e.g., "(a)")
-        font_family: Font family
-        x_label: X-axis label
-        y_label: Y-axis label
-        colorbar_label: Colorbar label
-        legend_label_template: Template for legend label
-        zero_symbol: Symbol for zero lookback
-        fuxi_label: Label for FuXi panel
-        cmap: Colormap name
-        color_bounds: Optional custom color bounds
-        legend_loc: Legend location
-
-    Returns:
-        Tuple of (figure, list of axes)
+    Each lookback column gets a bar where BCOR first drops below threshold, and optional bootstrap CI tails
+    from crossing_ci_lower/upper (per model and lookback) and fuxi_crossing_ci.
     """
-    from matplotlib import colors as mcolors
-
     def first_crossing_yindex(vals: np.ndarray, thr: float = 0.5) -> float:
+        """Return the interpolated first index where vals drop below thr (nan if never)."""
         v = np.asarray(vals, dtype=float)
         if v[0] < thr:
             return 0.0
@@ -1459,18 +877,17 @@ def bivariate_correlation_vs_lead_time_heatmap(
             raise ValueError("fuxi_correlations should be a 1D array (T_i,), got shape {}".format(fuxi_correlations.shape))
     num_panels = N + (1 if has_fuxi else 0)
 
-    # Key CHANGE: Specify widths so that the middle panel is very narrow if fuxi_correlations is given
+    # Narrow middle panel for FuXi
     if has_fuxi:
         width = 0.15
         widths = [1] * (num_panels // 2) + [width] + [1] * (num_panels - 1 - num_panels // 2)
-        total_width = sum(widths)
         figsize = (5.6 * (sum(widths)), 4.3)
         fig, axes = plt.subplots(1, num_panels, figsize=figsize, gridspec_kw={'width_ratios': widths}, constrained_layout=True)
     else:
         fig, axes = plt.subplots(1, num_panels, figsize=(5.6 * num_panels, 4.3), constrained_layout=True)
     if num_panels == 1:
         axes = [axes]
-    
+
     # Set font family if specified
     if font_family:
         plt.rcParams['font.family'] = font_family
@@ -1483,7 +900,6 @@ def bivariate_correlation_vs_lead_time_heatmap(
     norm = mcolors.BoundaryNorm(boundaries=bounds, ncolors=plt.get_cmap(cmap).N, clip=True)
     last_im = None
 
-    axis_indices = list(range(num_panels))
     if has_fuxi:
         middle = num_panels // 2
         model_axes = [i for i in range(num_panels) if i != middle]
@@ -1560,22 +976,7 @@ def bivariate_correlation_vs_lead_time_heatmap(
             ax.yaxis.set_ticklabels([])
             ax.set_ylabel("")
 
-        # Apply title with optional label bolding
-        import re
-        label_match = re.match(r'^(\([a-zA-Z0-9]+\))\s*(.*)$', lab)
-        if label_match and fontweight_title_label == 'bold':
-            label_part = label_match.group(1)
-            text_part = label_match.group(2)
-            title_str = f"$\\mathbf{{{label_part}}}$ {text_part}"
-            title_kwargs = {'fontsize': fontsize_title}
-            if font_family:
-                title_kwargs['family'] = font_family
-            ax.set_title(title_str, **title_kwargs)
-        else:
-            title_kwargs = {'fontsize': fontsize_title, 'fontweight': fontweight_title}
-            if font_family:
-                title_kwargs['family'] = font_family
-            ax.set_title(lab, **title_kwargs)
+        _set_title(ax, lab, fontsize_title, fontweight_title, fontweight_title_label, font_family)
 
         has_crossing_ci = crossing_ci_lower is not None and crossing_ci_upper is not None
 
@@ -1604,8 +1005,7 @@ def bivariate_correlation_vs_lead_time_heatmap(
                             ax.hlines(y_ci_hi, c - cap_width, c + cap_width, colors="k", linewidth=1.0)
 
         bar_proxy = Line2D([0], [0], color="k", lw=1.3, label=legend_label_template.format(threshold=threshold))
-        # Legend only for rightmost axis
-        # For case with fuxi: the rightmost model_axis is max(model_axes); otherwise, it's N-1
+        # Legend only on the rightmost model axis
         show_legend = (i == (model_axes[-1]))
         if show_legend:
             ax.legend(handles=[bar_proxy], loc=legend_loc, frameon=True, fancybox=True, framealpha=0.95, fontsize=fontsize_legend)
@@ -1613,12 +1013,11 @@ def bivariate_correlation_vs_lead_time_heatmap(
         ax.set_xlim(-0.5, L_i - 0.5)
         ax.set_ylim(-0.5, T_i - 0.5)
 
-    # Optional fuxi panel: Draw in the middle
+    # Optional FuXi panel in the middle
     if has_fuxi:
         ax = axes[fuxi_axis]
         T_i = fuxi_correlations.shape[0]
-        fuxi_arr = fuxi_correlations
-        fuxi_A = fuxi_arr.reshape(-1, 1)
+        fuxi_A = fuxi_correlations.reshape(-1, 1)
         im = ax.imshow(
             fuxi_A, origin="lower", aspect="auto", cmap=cmap, norm=norm
         )
@@ -1631,22 +1030,7 @@ def bivariate_correlation_vs_lead_time_heatmap(
         ax.set_yticklabels([])
         ax.set_ylabel("")
 
-        # Apply title with optional label bolding
-        import re
-        label_match = re.match(r'^(\([a-zA-Z0-9]+\))\s*(.*)$', fuxi_label)
-        if label_match and fontweight_title_label == 'bold':
-            label_part = label_match.group(1)
-            text_part = label_match.group(2)
-            title_str = f"$\\mathbf{{{label_part}}}$ {text_part}"
-            title_kwargs = {'fontsize': fontsize_title}
-            if font_family:
-                title_kwargs['family'] = font_family
-            ax.set_title(title_str, **title_kwargs)
-        else:
-            title_kwargs = {'fontsize': fontsize_title, 'fontweight': fontweight_title}
-            if font_family:
-                title_kwargs['family'] = font_family
-            ax.set_title(fuxi_label, **title_kwargs)
+        _set_title(ax, fuxi_label, fontsize_title, fontweight_title, fontweight_title_label, font_family)
         ax.set_xlabel("")
 
         ycross = first_crossing_yindex(fuxi_A[:, 0], thr=threshold)
@@ -1681,13 +1065,9 @@ def bivariate_correlation_vs_lead_time_heatmap(
 
     return fig, list(axes)
 
-def eof_explained_variance_plot(explained_variance, output_filename=None):
-    """Create bar plot of explained variance for EOF components.
 
-    Args:
-        explained_variance: Array of explained variance ratios
-        output_filename: Path to save figure (if None, displays plot)
-    """
+def eof_explained_variance_plot(explained_variance, output_filename=None):
+    """Bar plot of explained variance (%) per EOF (shows the plot if no output_filename)."""
     plt.figure(figsize=(10, 4))
     plt.bar(np.arange(len(explained_variance)), explained_variance * 100)
     plt.title("Explained Variance of Principal Components")
@@ -1703,15 +1083,7 @@ def eof_explained_variance_plot(explained_variance, output_filename=None):
 
 
 def eof_pattern_plot(eof_vector, longitudes, variable_labels, eof_number, output_filename=None):
-    """Create line plot showing EOF spatial pattern for multiple variables.
-
-    Args:
-        eof_vector: EOF eigenvector reshaped as (n_variables, n_longitudes)
-        longitudes: Longitude values
-        variable_labels: Labels for each variable (e.g., ['OLR', 'U850', 'U200'])
-        eof_number: EOF number for title (e.g., 1 or 2)
-        output_filename: Path to save figure (if None, displays plot)
-    """
+    """Line plot of one EOF spatial pattern per variable, eof_vector shaped (n_variables, n_longitudes)."""
     plt.figure(figsize=(10, 4))
     for i in range(len(variable_labels)):
         plt.plot(longitudes, eof_vector[i], label=variable_labels[i])

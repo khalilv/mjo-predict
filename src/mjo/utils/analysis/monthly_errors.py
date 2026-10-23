@@ -6,7 +6,7 @@ from tqdm import tqdm
 from collections import defaultdict
 from datetime import timedelta
 from mjo.utils.RMM.io import load_rmm_indices
-from mjo.utils.analysis.utils import load_forecast, load_config, compute_bcor
+from mjo.utils.analysis.utils import load_forecast, load_config, collect_lead_pairs, compute_bcor
 from typing import List, Dict, Callable
 from mjo.utils.plot import bivariate_correlation_by_month_plot
 
@@ -19,7 +19,7 @@ def compute_metric_across_months(
 ) -> Dict[int, np.ndarray]:
     """Compute a metric across all lead times, grouped by month of initialization."""
     monthly_groups = defaultdict(list)
-    monthly_results = defaultdict()
+    monthly_results = {}
 
     # Group forecasts by initialization month
     for df in dataframes:
@@ -30,11 +30,7 @@ def compute_metric_across_months(
     for month, dfs in tqdm(monthly_groups.items(), 'Computing per-month metric'):
         results = []
         for lt in range(max_lt):
-            preds, truths = [], []
-            for df in dfs:
-                if lt < len(df):
-                    preds.append(df.iloc[lt])
-                    truths.append(ground_truth_df.loc[df.index[lt]])
+            _, preds, truths = collect_lead_pairs(dfs, lt, ground_truth_df)
             pred_df = pd.DataFrame(preds)
             truth_df = pd.DataFrame(truths)
             result = metric_fn(pred_df.RMM1.values, truth_df.RMM1.values, pred_df.RMM2.values, truth_df.RMM2.values)
@@ -45,8 +41,7 @@ def compute_metric_across_months(
 
 
 def main():
-    """Main function to compute and plot monthly errors."""
-    # Parse command line arguments
+    """Compute and plot BCOR by initialization month and lead time for each model and FuXi."""
     parser = argparse.ArgumentParser(description='Generate monthly error plots')
     parser.add_argument('--config', type=str, required=True, help='Path to YAML configuration file')
     args = parser.parse_args()
@@ -67,6 +62,7 @@ def main():
     # Plot settings
     plot_settings = config.get('plot_settings', {})
     font_settings = plot_settings.get('fonts', {})
+    title_template = plot_settings.get('titles', {}).get('template', '')
     colormap = plot_settings.get('colormap', {})
     labels = plot_settings.get('labels', {})
 
@@ -90,12 +86,12 @@ def main():
     if 'levels' in colormap:
         levels = colormap['levels']
         if isinstance(levels, dict):
-            # If levels is a dict with start, stop, num
+            # Dict form: {start, stop, num}
             plot_kwargs['levels'] = np.linspace(levels['start'], levels['stop'], levels['num'])
         else:
             plot_kwargs['levels'] = np.array(levels)
 
-    # Extract y-axis label settings
+    # Label visibility
     y_labels = plot_settings.get('y_labels', {})
     if y_labels.get('hide_x', False):
         plot_kwargs['x_label'] = ''
@@ -112,8 +108,6 @@ def main():
         dfs, max_lt, _ = load_forecast(forecast_dir, start_date, end_date)
         bcor_per_month = compute_metric_across_months(dfs, max_lt, ground_truth, compute_bcor)
 
-        # Get title from config or use default
-        title_template = plot_settings.get('titles', {}).get('template', '')
         title = title_template.format(model=plot_labels[i]) if title_template else None
 
         bivariate_correlation_by_month_plot(
@@ -128,8 +122,6 @@ def main():
         fuxi_ds, fuxi_max_lt, _ = load_forecast(fuxi_path, start_date, end_date, member='mean')
         fuxi_bcor_per_month = compute_metric_across_months(fuxi_ds, fuxi_max_lt, ground_truth, compute_bcor)
 
-        # Get title from config using same template
-        title_template = plot_settings.get('titles', {}).get('template', '')
         title = title_template.format(model='FuXi-S2S') if title_template else None
 
         bivariate_correlation_by_month_plot(

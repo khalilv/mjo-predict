@@ -6,7 +6,8 @@ from tqdm import tqdm
 from typing import List, Optional
 from mjo.utils.RMM.io import load_rmm_indices
 from mjo.utils.analysis.utils import (
-    load_forecast, load_config,
+    load_forecast, load_config, get_bootstrap_settings, get_line_plot_kwargs,
+    collect_lead_pairs, compute_bias_from_frames,
     compute_amplitude_bias, compute_phase_bias,
     block_bootstrap_per_lead_significance,
 )
@@ -21,43 +22,19 @@ def compute_bias_across_leads(
     fuxi_ds: Optional[List[pd.DataFrame]] = None,
     filter_type: Optional[str] = None
 ) -> np.ndarray:
-    """Compute bias (amplitude or phase) across all lead times for forecasts."""
+    """Compute amplitude or phase bias across all lead times; filter_type ('high'/'low') names the FuXi-amplitude regime to EXCLUDE."""
     results = []
     assert bias_type in ['amplitude', 'phase'], 'Bias type must be either amplitude or phase'
 
     for lt in tqdm(range(max_lt), 'Computing per-lead bias'):
-        preds, truths = [], []
-        for i, df in enumerate(dataframes):
-            if fuxi_ds is not None:
-                fuxi_df = fuxi_ds[i]
-                assert filter_type is not None and filter_type in ['high', 'low'], 'Filter type high or low must be provided for filtering'
-                assert (fuxi_df.index == df.index).all(), 'Found mismatch in dates between FuXi forecast and predictions'
-                forecast_date = df.index[lt]
-                fuxi_amplitude = fuxi_df.loc[forecast_date].amplitude
-                if (filter_type == 'low' and fuxi_amplitude < 1) or (filter_type == 'high' and fuxi_amplitude >= 1):
-                    continue
-            if lt < len(df):
-                preds.append(df.iloc[lt])
-                truths.append(ground_truth_df.loc[df.index[lt]])
-
-        pred_df = pd.DataFrame(preds)
-        truth_df = pd.DataFrame(truths)
-
-        if bias_type == 'amplitude':
-            result = (pred_df.amplitude.values - truth_df.amplitude.values).mean()
-        else:
-            num = (pred_df.RMM1.values * truth_df.RMM2.values - pred_df.RMM2.values * truth_df.RMM1.values)
-            den = (pred_df.RMM1.values * truth_df.RMM1.values + pred_df.RMM2.values * truth_df.RMM2.values)
-            result = np.arctan2(num, den).mean()
-
-        results.append(result)
+        _, preds, truths = collect_lead_pairs(dataframes, lt, ground_truth_df, fuxi_ds, filter_type, check_dates=True)
+        results.append(compute_bias_from_frames(pd.DataFrame(preds), pd.DataFrame(truths), bias_type))
 
     return np.array(results)
 
 
 def main():
-    """Main function to compute and plot lead time bias."""
-    # Parse command line arguments
+    """Compute and plot amplitude and phase bias versus lead time, with optional bootstrap significance."""
     parser = argparse.ArgumentParser(description='Generate lead time bias plots')
     parser.add_argument('--config', type=str, required=True, help='Path to YAML configuration file')
     args = parser.parse_args()
@@ -77,42 +54,18 @@ def main():
 
     # Plot settings
     plot_settings = config.get('plot_settings', {})
-    font_settings = plot_settings.get('fonts', {})
     titles_settings = plot_settings.get('titles', {})
     ylim_settings = plot_settings.get('ylim', {})
-
-    # Build plot kwargs
-    plot_kwargs = {
-        'fontsize_title': font_settings.get('title', 14),
-        'fontsize_axis_label': font_settings.get('axis_label', 12),
-        'fontsize_tick_label': font_settings.get('tick_label', 11),
-        'fontsize_legend': font_settings.get('legend', 11),
-        'fontweight_title': font_settings.get('title_weight', 'bold'),
-        'fontweight_title_label': font_settings.get('title_label_weight'),
-        'font_family': font_settings.get('family'),
-        'colors': plot_settings.get('colors'),
-        'linestyles': plot_settings.get('linestyles'),
-        'linewidth': plot_settings.get('linewidth', 2),
-        'ylim_amplitude': ylim_settings.get('amplitude'),
-        'ylim_phase': ylim_settings.get('phase'),
-    }
-
-    # Extract y-axis label settings
+    plot_kwargs = get_line_plot_kwargs(plot_settings)
+    plot_kwargs['ylim_amplitude'] = ylim_settings.get('amplitude')
+    plot_kwargs['ylim_phase'] = ylim_settings.get('phase')
     y_labels = plot_settings.get('y_labels', {})
     if y_labels.get('hide_amplitude', False):
         plot_kwargs['y_label_amplitude'] = ''
     if y_labels.get('hide_phase', False):
         plot_kwargs['y_label_phase'] = ''
 
-    # Bootstrap settings
-    bootstrap_config = config.get('bootstrap', {})
-    bootstrap_enabled = bootstrap_config.get('enabled', False)
-    bootstrap_kwargs = {
-        'n_samples': bootstrap_config.get('n_samples', 1000),
-        'block_size': bootstrap_config.get('block_size', 13),
-        'ci_level': bootstrap_config.get('ci_level', 0.95),
-        'seed': bootstrap_config.get('seed', 42),
-    }
+    bootstrap_enabled, bootstrap_kwargs = get_bootstrap_settings(config)
 
     # Load ground truth
     ground_truth = load_rmm_indices(ground_truth_path)
@@ -133,48 +86,27 @@ def main():
     if fuxi_path:
         fuxi_ds, fuxi_max_lt, _ = load_forecast(fuxi_path, start_date, end_date, member='mean')
 
-    # Process each forecast directory
-    for forecast_dir in forecast_dirs:
-        dfs, max_lt, _ = load_forecast(forecast_dir, start_date=start_date, end_date=end_date)
-
-        # Compute biases
-        amplitude_bias = compute_bias_across_leads(dfs, 'amplitude', max_lt, ground_truth)
-        phase_bias = compute_bias_across_leads(dfs, 'phase', max_lt, ground_truth)
-
-        amplitude_biases.append(amplitude_bias)
-        phase_biases.append(phase_bias)
+    def _add_model(dfs, max_lt):
+        """Compute and store all-forecast and amplitude-filtered biases for one model."""
+        amplitude_biases.append(compute_bias_across_leads(dfs, 'amplitude', max_lt, ground_truth))
+        phase_biases.append(compute_bias_across_leads(dfs, 'phase', max_lt, ground_truth))
         max_lead_times.append(max_lt)
         all_model_dfs.append(dfs)
 
-        # Compute amplitude-filtered biases if FuXi data is available
+        # Amplitude-filtered biases; filter_type names the FuXi-amplitude regime to exclude
         if fuxi_ds is not None:
-            amplitude_bias_low_amp = compute_bias_across_leads(dfs, 'amplitude', max_lt, ground_truth, fuxi_ds, 'high')
-            phase_bias_low_amp = compute_bias_across_leads(dfs, 'phase', max_lt, ground_truth, fuxi_ds, 'high')
-            amplitude_bias_high_amp = compute_bias_across_leads(dfs, 'amplitude', max_lt, ground_truth, fuxi_ds, 'low')
-            phase_bias_high_amp = compute_bias_across_leads(dfs, 'phase', max_lt, ground_truth, fuxi_ds, 'low')
+            low_amp_amplitude_biases.append(compute_bias_across_leads(dfs, 'amplitude', max_lt, ground_truth, fuxi_ds, 'high'))
+            low_amp_phase_biases.append(compute_bias_across_leads(dfs, 'phase', max_lt, ground_truth, fuxi_ds, 'high'))
+            high_amp_amplitude_biases.append(compute_bias_across_leads(dfs, 'amplitude', max_lt, ground_truth, fuxi_ds, 'low'))
+            high_amp_phase_biases.append(compute_bias_across_leads(dfs, 'phase', max_lt, ground_truth, fuxi_ds, 'low'))
 
-            low_amp_amplitude_biases.append(amplitude_bias_low_amp)
-            low_amp_phase_biases.append(phase_bias_low_amp)
-            high_amp_amplitude_biases.append(amplitude_bias_high_amp)
-            high_amp_phase_biases.append(phase_bias_high_amp)
+    for forecast_dir in forecast_dirs:
+        dfs, max_lt, _ = load_forecast(forecast_dir, start_date=start_date, end_date=end_date)
+        _add_model(dfs, max_lt)
 
-    # Process FuXi forecasts if available
-    if fuxi_ds is not None and fuxi_max_lt is not None:
-        amplitude_bias = compute_bias_across_leads(fuxi_ds, 'amplitude', fuxi_max_lt, ground_truth)
-        phase_bias = compute_bias_across_leads(fuxi_ds, 'phase', fuxi_max_lt, ground_truth)
-        amplitude_bias_low_amp = compute_bias_across_leads(fuxi_ds, 'amplitude', fuxi_max_lt, ground_truth, fuxi_ds, 'high')
-        phase_bias_low_amp = compute_bias_across_leads(fuxi_ds, 'phase', fuxi_max_lt, ground_truth, fuxi_ds, 'high')
-        amplitude_bias_high_amp = compute_bias_across_leads(fuxi_ds, 'amplitude', fuxi_max_lt, ground_truth, fuxi_ds, 'low')
-        phase_bias_high_amp = compute_bias_across_leads(fuxi_ds, 'phase', fuxi_max_lt, ground_truth, fuxi_ds, 'low')
-
-        amplitude_biases.append(amplitude_bias)
-        phase_biases.append(phase_bias)
-        max_lead_times.append(fuxi_max_lt)
-        low_amp_amplitude_biases.append(amplitude_bias_low_amp)
-        low_amp_phase_biases.append(phase_bias_low_amp)
-        high_amp_amplitude_biases.append(amplitude_bias_high_amp)
-        high_amp_phase_biases.append(phase_bias_high_amp)
-        all_model_dfs.append(fuxi_ds)
+    # FuXi is appended last and serves as the baseline
+    if fuxi_ds is not None:
+        _add_model(fuxi_ds, fuxi_max_lt)
 
     # Prepare lead times
     lead_times = [np.arange(1, max_lt + 1) for max_lt in max_lead_times]
