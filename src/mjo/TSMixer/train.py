@@ -12,7 +12,6 @@ def main():
 
     Configures and trains a TSMixer model with time and feature mixing using PyTorch Lightning.
     Configuration is loaded from a YAML file specified via command line.
-
     """
     # Initialize Lightning with the model and data modules
     cli = LightningCLI(
@@ -41,6 +40,7 @@ def main():
 
     # Evaluate on test set using best checkpoint
     cli.trainer.test(cli.model, datamodule=cli.datamodule, ckpt_path='best')
+
 
 if __name__ == "__main__":
     main()

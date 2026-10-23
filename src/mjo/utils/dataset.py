@@ -5,7 +5,7 @@ import os
 from torch.utils.data import IterableDataset
 
 class NPZReader(IterableDataset):
-    """Dataset for loading NPZ files.
+    """Load an NPZ file and yield its contiguous slice for the current rank and worker.
 
     Args:
         file_path (str): Path to NPZ data file.
@@ -55,7 +55,7 @@ class NPZReader(IterableDataset):
                 H = -history_to_append if len(overflow['dates']) >= history_to_append else 0
                 history_to_append -= len(overflow['dates'])
                 if (data['dates'][0] - overflow['dates'][-1]).astype('timedelta64[D]') > 1:
-                        print(f"Warning: Gap between last element of overflow {overflow['dates'][-1]} and first element of data {data['dates'][0]} is greater than 1 day")
+                    print(f"Warning: Gap between last element of overflow {overflow['dates'][-1]} and first element of data {data['dates'][0]} is greater than 1 day")
                 for v in data.keys():
                     data[v] = np.concatenate([overflow[v][H:], data[v]])
                 curr_file += 1
@@ -67,14 +67,14 @@ class NPZReader(IterableDataset):
             global_rank = torch.distributed.get_rank()
             world_size = torch.distributed.get_world_size()
         
-         # split data across ranks. each rank will get an identical slice to avoid synchronization issues. if data cannot be split evenly, remainder will be discarded 
+        # split data across ranks. each rank will get an identical slice to avoid synchronization issues. if data cannot be split evenly, remainder will be discarded 
         timesteps_per_rank = (len(data['dates']) + ((world_size - 1)*(self.predict_range + self.history_range))) // world_size
         assert timesteps_per_rank > (self.predict_range + self.history_range), f"Data per rank with size {timesteps_per_rank} is not large enough for history timestamps {self.history} and predictions {self.predictions}. Decrease devices."
         rank_start_idx = global_rank * (timesteps_per_rank - (self.predict_range + self.history_range))
         rank_end_idx = rank_start_idx + timesteps_per_rank
         data_per_rank = {v: data[v][rank_start_idx:rank_end_idx] for v in data.keys()}
 
-        #within each rank split data across workers
+        # within each rank split data across workers
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is None:
             worker_id = 0
@@ -130,7 +130,6 @@ class Forecast(IterableDataset):
         self.out_transforms = out_transforms
         self.filter_mjo_events = filter_mjo_events
         self.filter_mjo_phases = filter_mjo_phases
-        self.forecast_shape = None
       
     def __iter__(self):
         for data, in_variables, date_variables, out_variables, predictions, history, predict_range, history_range in self.dataset:
@@ -172,7 +171,7 @@ class Forecast(IterableDataset):
                         else:
                             continue
                     
-                    #remove missing datapoints
+                    # remove missing datapoints
                     if torch.isnan(in_data).any() or torch.isnan(out_data).any():
                         continue
 
@@ -183,7 +182,7 @@ class Forecast(IterableDataset):
                         out_date_encodings = self.date_transforms.normalize(out_date_encodings) if out_date_encodings is not None else None
 
                     if self.forecast_dir:
-                        residual = out_data - forecast_out #compute residual vs forecast mean
+                        residual = out_data - forecast_out  # residual vs forecast mean
                     
                     yield in_data, in_date_encodings, out_data, out_date_encodings, forecast_in if self.forecast_dir else None, residual if self.forecast_dir else None, in_variables, date_variables, out_variables, in_timestamps, out_timestamps, forecast_timestamps if self.forecast_dir else None
 

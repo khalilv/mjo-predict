@@ -28,7 +28,7 @@ class LinearWarmupCosineAnnealingLR(_LRScheduler):
             optimizer (Optimizer): Wrapped optimizer.
             warmup_steps (int): Maximum number of iterations for linear warmup
             max_steps (int): Maximum number of iterations
-            warmup_start_lr (float): LearninAZg rate to start the linear warmup. Default: 0.
+            warmup_start_lr (float): Learning rate to start the linear warmup. Default: 0.
             eta_min (float): Minimum learning rate. Default: 0.
             last_epoch (int): The index of last epoch. Default: -1.
         """
@@ -92,37 +92,3 @@ class LinearWarmupCosineAnnealingLR(_LRScheduler):
             * (1 + math.cos(math.pi * (self.last_epoch - self.warmup_steps) / (self.max_steps - self.warmup_steps)))
             for base_lr in self.base_lrs
         ]
-
-class LinearWarmupConstantLR(_LRScheduler):
-    """Linear warmup to a constant learning rate.
-
-    Args:
-        optimizer: Wrapped optimizer
-        warmup_steps: Number of steps for linear warmup
-        last_epoch: The index of the last epoch (default: -1)
-    """
-    def __init__(self, optimizer, warmup_steps, last_epoch=-1):
-        self.warmup_steps = warmup_steps
-        super(LinearWarmupConstantLR, self).__init__(optimizer, last_epoch)
-
-    def get_lr(self) -> List[float]:
-        """Compute learning rate using chainable form of the scheduler.
-
-        Returns:
-            List of learning rates for each parameter group
-        """
-        if self.last_epoch < self.warmup_steps:
-            return [base_lr * (self.last_epoch + 1) / self.warmup_steps for base_lr in self.base_lrs]
-        else:
-            return [base_lr for base_lr in self.base_lrs]
-
-    def _get_closed_form_lr(self) -> List[float]:
-        """Compute learning rate for a given epoch index.
-
-        Returns:
-            List of learning rates for each parameter group
-        """
-        if self.last_epoch < self.warmup_steps:
-            return [base_lr * (self.last_epoch + 1) / self.warmup_steps for base_lr in self.base_lrs]
-        else:
-            return [base_lr for base_lr in self.base_lrs]

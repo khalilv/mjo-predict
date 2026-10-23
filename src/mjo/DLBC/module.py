@@ -4,14 +4,12 @@
 # credits: https://github.com/ashleve/lightning-hydra-template/blob/main/src/models/mnist_module.py
 import os
 import torch
-import torch.nn.functional as F
 from typing import Any
 from pytorch_lightning import LightningModule
 from mjo.DLBC.model import PerLeadTimeLSTM
 from mjo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from mjo.utils.metrics import MSE, MAE
 from mjo.utils.RMM.io import save_rmm_indices
-from mjo.utils.data_utils import prep_input
 
 class MJOForecastModule(LightningModule):
     """
@@ -34,7 +32,7 @@ class MJOForecastModule(LightningModule):
 
     def __init__(
         self,
-        pretrained_path: str = "",      
+        pretrained_path: str = "",
         hidden_size: int = 64,
         lr: float = 5e-4,
         beta_1: float = 0.9,
@@ -46,7 +44,7 @@ class MJOForecastModule(LightningModule):
     ):
         super().__init__()
         # Model architecture parameters
-        self.pretrained_path = pretrained_path        
+        self.pretrained_path = pretrained_path
         self.hidden_size = hidden_size
 
         # Optimization and scheduler parameters
@@ -61,7 +59,7 @@ class MJOForecastModule(LightningModule):
         self.save_outputs = save_outputs
         self.denormalization = None
 
-        self.save_hyperparameters(logger=False, ignore=["net"])      
+        self.save_hyperparameters(logger=False, ignore=["net"])
 
     def load_pretrained_weights(self, pretrained_path):
         """Load pretrained model weights from checkpoint.
@@ -137,7 +135,7 @@ class MJOForecastModule(LightningModule):
             num_leads=self.input_length,
             output_dim=len(self.out_variables)
         )
-        if hasattr(self, "pretrained_path") and self.pretrained_path and len(self.pretrained_path) > 0:
+        if self.pretrained_path:
             self.load_pretrained_weights(self.pretrained_path)
 
     def setup(self, stage: str):
@@ -148,7 +146,7 @@ class MJOForecastModule(LightningModule):
         """
         if self.denormalization:
             self.denormalization.to(device=self.device, dtype=self.dtype)
-            
+
     def training_step(self, batch: Any, batch_idx: int):
         """Execute single training step.
 
@@ -164,9 +162,9 @@ class MJOForecastModule(LightningModule):
         target = out_data
 
         # Use forecast data concatenated with date encodings as input
-        x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
+        x_in = forecast_data.squeeze(1)  # (B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
         x_in = torch.cat([x_in, out_date_encodings], dim=2)
-        pred_data = self.net.forward(x=x_in) #(B, T, 2)
+        pred_data = self.net.forward(x=x_in)  # (B, T, V)
 
         batch_loss_mse = self.train_mse(preds=pred_data, targets=target)
         batch_loss_mae = self.train_mae(preds=pred_data, targets=target)
@@ -183,7 +181,6 @@ class MJOForecastModule(LightningModule):
         self.train_mae.reset()
         return batch_loss['mse_norm']
 
-
     def validation_step(self, batch: Any, batch_idx: int):
         """Execute single validation step.
 
@@ -196,14 +193,13 @@ class MJOForecastModule(LightningModule):
         target = out_data
 
         # Use forecast data concatenated with date encodings as input
-        x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
+        x_in = forecast_data.squeeze(1)  # (B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
         x_in = torch.cat([x_in, out_date_encodings], dim=2)
         pred_data = self.net.forward(x=x_in)
 
         self.val_mse.update(preds=pred_data, targets=target)
         self.val_mae.update(preds=pred_data, targets=target)
         return
-
 
     def on_validation_epoch_end(self):
         """Compute and log validation metrics at epoch end.
@@ -214,7 +210,7 @@ class MJOForecastModule(LightningModule):
         val_mse = self.val_mse.compute()
         val_mae = self.val_mae.compute()
 
-        #scalar metrics
+        # scalar metrics
         loss_dict = {**val_mse, **val_mae}
         for key in loss_dict.keys():
             self.log(
@@ -245,7 +241,7 @@ class MJOForecastModule(LightningModule):
         target = out_data
 
         # Use forecast data concatenated with date encodings as input
-        x_in = forecast_data.squeeze(1) #(B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
+        x_in = forecast_data.squeeze(1)  # (B, E, T, V) -> (B, T, V) squeeze out ensemble member dim
         x_in = torch.cat([x_in, out_date_encodings], dim=2)
         pred_data = self.net.forward(x=x_in)
 
@@ -276,7 +272,7 @@ class MJOForecastModule(LightningModule):
         test_mse = self.test_mse.compute()
         test_mae = self.test_mae.compute()
 
-        #scalar metrics
+        # scalar metrics
         loss_dict = {**test_mse, **test_mae}
         for key in loss_dict.keys():
             self.log(

@@ -3,7 +3,6 @@
 
 # credits: https://github.com/ashleve/lightning-hydra-template/blob/main/src/models/mnist_module.py
 import os
-import math
 import torch
 from typing import Any
 from pytorch_lightning import LightningModule
@@ -45,7 +44,7 @@ class MJOForecastModule(LightningModule):
 
     def __init__(
         self,
-        pretrained_path: str = "",      
+        pretrained_path: str = "",
         past_cov_dim: int = 0,
         future_cov_dim: int = 0,
         static_cov_dim: int = 0,
@@ -92,7 +91,7 @@ class MJOForecastModule(LightningModule):
         self.save_outputs = save_outputs
         self.denormalization = None
 
-        self.save_hyperparameters(logger=False, ignore=["net"])      
+        self.save_hyperparameters(logger=False, ignore=["net"])
 
     def load_pretrained_weights(self, pretrained_path):
         """Load pretrained model weights from checkpoint.
@@ -188,7 +187,7 @@ class MJOForecastModule(LightningModule):
             norm_type=self.norm_type,
             normalize_before=self.normalize_before,
         )
-        if hasattr(self, "pretrained_path") and self.pretrained_path and len(self.pretrained_path) > 0:
+        if self.pretrained_path:
             self.load_pretrained_weights(self.pretrained_path)
 
     def set_denormalization(self, denormalization):
@@ -207,7 +206,7 @@ class MJOForecastModule(LightningModule):
         """
         if self.denormalization:
             self.denormalization.to(device=self.device, dtype=self.dtype)
-            
+
     def training_step(self, batch: Any, batch_idx: int):
         """Execute single training step.
 
@@ -286,7 +285,7 @@ class MJOForecastModule(LightningModule):
         val_mse = self.val_mse.compute()
         val_mae = self.val_mae.compute()
 
-        #scalar metrics
+        # scalar metrics
         loss_dict = {**val_mse, **val_mae}
         for key in loss_dict.keys():
             self.log(
@@ -365,7 +364,7 @@ class MJOForecastModule(LightningModule):
         test_mse = self.test_mse.compute()
         test_mae = self.test_mae.compute()
 
-        #scalar metrics
+        # scalar metrics
         loss_dict = {**test_mse, **test_mae}
         for key in loss_dict.keys():
             self.log(

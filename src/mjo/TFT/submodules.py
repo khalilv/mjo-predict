@@ -28,48 +28,6 @@ import torch.nn.functional as F
 
 from mjo.utils.dropout import MonteCarloDropout
 
-HiddenState = Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]
-
-def get_embedding_size(n: int, max_size: int = 100) -> int:
-    """
-    Determine empirically good embedding sizes (formula taken from fastai).
-    Args:
-        n (int): number of classes
-        max_size (int, optional): maximum embedding size. Defaults to 100.
-    Returns:
-        int: embedding size
-    """
-    if n > 2:
-        return min(round(1.6 * n**0.56), max_size)
-    else:
-        return 1
-
-
-class _TimeDistributedEmbeddingBag(nn.EmbeddingBag):
-    def __init__(self, *args, batch_first: bool = False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.batch_first = batch_first
-
-    def forward(self, x):
-        if len(x.size()) <= 2:
-            return super().forward(x)
-
-        # Squash samples and timesteps into a single axis
-        x_reshape = x.contiguous().view(
-            -1, x.size(-1)
-        )  # (samples * timesteps, input_size)
-
-        y = super().forward(x_reshape)
-
-        # We have to reshape Y
-        if self.batch_first:
-            y = y.contiguous().view(
-                x.size(0), -1, y.size(-1)
-            )  # (samples, timesteps, output_size)
-        else:
-            y = y.view(-1, x.size(1), y.size(-1))  # (timesteps, samples, output_size)
-        return y
-
 
 class _MultiEmbedding(nn.Module):
     def __init__(
@@ -85,8 +43,7 @@ class _MultiEmbedding(nn.Module):
         embedding_sizes
             dictionary of embedding sizes, e.g. ``{'cat1': (10, 3)}``
             indicates that the first categorical variable has 10 unique values which are mapped to 3 embedding
-            dimensions. Use :py:func:`~pytorch_forecasting.utils.get_embedding_size` to automatically obtain
-            reasonable embedding sizes depending on the number of categories.
+            dimensions.
         variable_names
             list of categorical variable names to ensure ordered iterations.
         """
@@ -126,6 +83,8 @@ class _MultiEmbedding(nn.Module):
 
 
 class _TimeDistributedInterpolation(nn.Module):
+    """Linearly interpolate the last dimension to `output_size`, applied per timestep."""
+
     def __init__(
         self, output_size: int, batch_first: bool = False, trainable: bool = False
     ):
@@ -198,6 +157,8 @@ class _GatedLinearUnit(nn.Module):
 
 
 class _ResampleNorm(nn.Module):
+    """Resample to `output_size`, optionally gate, then normalize."""
+
     def __init__(
         self,
         input_size: int,
@@ -233,6 +194,8 @@ class _ResampleNorm(nn.Module):
 
 
 class _AddNorm(nn.Module):
+    """Add a (resampled, optionally gated) skip connection and normalize."""
+
     def __init__(
         self,
         input_size: int,
@@ -268,6 +231,8 @@ class _AddNorm(nn.Module):
 
 
 class _GateAddNorm(nn.Module):
+    """Apply a gated linear unit followed by add & norm with a skip connection."""
+
     def __init__(
         self,
         input_size: int,
@@ -301,6 +266,8 @@ class _GateAddNorm(nn.Module):
 
 
 class _GatedResidualNetwork(nn.Module):
+    """Gated residual network (GRN) with optional context input."""
+
     def __init__(
         self,
         input_size: int,
@@ -386,9 +353,7 @@ class _VariableSelectionNetwork(nn.Module):
         prescalers: Optional[Dict[str, nn.Linear]] = None,
         layer_norm: nn.Module = nn.LayerNorm,
     ):
-        """
-        Calculate weights for ``num_inputs`` variables  which are each of size ``input_size``
-        """
+        """Calculate weights for ``num_inputs`` variables which are each of size ``input_size``."""
         super().__init__()
 
         input_embedding_flags = (
@@ -492,7 +457,7 @@ class _VariableSelectionNetwork(nn.Module):
             if outputs.ndim == 3:  # -> batch size, time, hidden size, n_variables
                 sparse_weights = torch.ones(
                     outputs.size(0), outputs.size(1), 1, 1, device=outputs.device
-                )  #
+                )
             else:  # ndim == 2 -> batch size, hidden size, n_variables
                 sparse_weights = torch.ones(
                     outputs.size(0), 1, 1, device=outputs.device
@@ -501,6 +466,8 @@ class _VariableSelectionNetwork(nn.Module):
 
 
 class _ScaledDotProductAttention(nn.Module):
+    """Scaled dot-product attention with optional mask."""
+
     def __init__(self, dropout: float = None, scale: bool = True):
         super().__init__()
         if dropout is not None:
@@ -528,6 +495,8 @@ class _ScaledDotProductAttention(nn.Module):
 
 
 class _InterpretableMultiHeadAttention(nn.Module):
+    """Interpretable multi-head attention with a value projection shared across heads."""
+
     def __init__(self, n_head: int, d_model: int, dropout: float = 0.0):
         super().__init__()
 

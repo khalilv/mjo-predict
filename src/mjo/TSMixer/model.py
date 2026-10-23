@@ -1,6 +1,6 @@
 """
-Time-Series Mixer (TSMixer)
----------------------------
+Time-Series Mixer (TSMixer), adapted from Darts
+-----------------------------------------------
 """
 
 # The inner layers (``nn.Modules``) and the ``TimeBatchNorm2d`` were provided by a PyTorch implementation
@@ -56,8 +56,10 @@ def _time_to_feature(x: torch.Tensor) -> torch.Tensor:
 
 
 class TimeBatchNorm2d(nn.BatchNorm2d):
+    """Batch normalization over the last two (time, feature) dimensions of a 3D Tensor."""
+
     def __init__(self, *args, **kwargs):
-        """A batch normalization layer that normalizes over the last two dimensions of a Tensor."""
+        # shape args are accepted for interface compatibility with LayerNorm but unused
         super().__init__(num_features=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -300,7 +302,7 @@ class _ConditionalMixerLayer(nn.Module):
 class TSMixerX(nn.Module):
     def __init__(
         self,
-        input_length: int, 
+        input_length: int,
         output_length: int,
         input_dim: int,
         output_dim: int,
@@ -317,8 +319,7 @@ class TSMixerX(nn.Module):
         normalize_before: bool,
         **kwargs,
     ) -> None:
-        """
-        Initializes the TSMixer module for use within a Darts forecasting model.
+        """TSMixer network with past, future and static covariates.
 
         Parameters
         ----------
@@ -353,6 +354,8 @@ class TSMixerX(nn.Module):
             Type of normalization to use.
         normalize_before
             Whether to apply normalization before or after mixing.
+        **kwargs
+            passed to ``nn.Module``.
         """
         super().__init__(**kwargs)
         self.input_dim = input_dim
@@ -365,21 +368,19 @@ class TSMixerX(nn.Module):
 
         if activation not in ACTIVATIONS:
             raise ValueError(
-                f"Invalid `activation={activation}`. Must be on of {ACTIVATIONS}."
+                f"Invalid `activation={activation}`. Must be one of {ACTIVATIONS}."
             )
         activation = getattr(nn, activation)()
 
         if isinstance(norm_type, str):
             if norm_type not in NORMS:
                 raise ValueError(
-                    f"Invalid `norm_type={norm_type}`. Must be on of {NORMS}."
+                    f"Invalid `norm_type={norm_type}`. Must be one of {NORMS}."
                 )
             if norm_type == "TimeBatchNorm2d":
                 norm_type = TimeBatchNorm2d
             else:
                 norm_type = getattr(normalization, norm_type)
-        else:
-            norm_type = norm_type
 
         mixer_params = {
             "ff_size": ff_size,
@@ -392,7 +393,7 @@ class TSMixerX(nn.Module):
         self.fc_hist = nn.Linear(self.input_length, self.output_length)
         self.feature_mixing_hist = _FeatureMixing(
             sequence_length=self.output_length,
-            input_dim=input_dim + past_cov_dim, #+ future_cov_dim,
+            input_dim=input_dim + past_cov_dim,
             output_dim=hidden_size,
             **mixer_params,
         )
@@ -414,30 +415,7 @@ class TSMixerX(nn.Module):
             **mixer_params,
         )
         self.fc_out = nn.Linear(hidden_size, output_dim * nr_params)
-        # self.init_weights()
     
-    def init_weights(self):
-        def _init_fn(module):
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_normal_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-
-            elif isinstance(module, (nn.LayerNorm, nn.BatchNorm1d, nn.BatchNorm2d)):
-                if module.weight is not None:
-                    nn.init.ones_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-
-            elif isinstance(module, TimeBatchNorm2d):
-                if module.weight is not None:
-                    nn.init.ones_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-
-        # Apply to all submodules
-        self.apply(_init_fn)
-
     @staticmethod
     def _build_mixer(
         prediction_length: int,
@@ -468,7 +446,6 @@ class TSMixerX(nn.Module):
         return mixer_layers
 
     def forward(self, x_in) -> torch.Tensor:
-        # x_hist contains the historical time series data and the historical
         """TSMixer model forward pass.
 
         Parameters
@@ -480,8 +457,8 @@ class TSMixerX(nn.Module):
 
         Returns
         -------
-        torch.torch.Tensor
-            The output  Tensorof shape `(batch_size, output_length, output_dim, nr_params)`.
+        torch.Tensor
+            The output Tensor of shape `(batch_size, output_length, output_dim, nr_params)`.
         """
         # B: batch size
         # L: input chunk length
@@ -490,7 +467,7 @@ class TSMixerX(nn.Module):
         # P: past cov features
         # F: future cov features
         # S: static cov features
-        # H = C + P + F: historic features
+        # H = C + P: historic features
         # H_S: hidden Size
         # N_P: likelihood parameters
 

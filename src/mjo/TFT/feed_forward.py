@@ -90,7 +90,7 @@ class FeedForward(nn.Module):
         super().__init__()
         # Layer one parameterized by weight $W_1$ and bias $b_1$
         self.layer1 = nn.Linear(d_model, d_ff, bias=bias1)
-        # Layer one parameterized by weight $W_1$ and bias $b_1$
+        # Layer two parameterized by weight $W_2$ and bias $b_2$
         self.layer2 = nn.Linear(d_ff, d_model, bias=bias2)
         # Hidden layer dropout
         self.dropout = MonteCarloDropout(dropout)

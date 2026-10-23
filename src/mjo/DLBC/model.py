@@ -9,6 +9,7 @@ class PerLeadTimeLSTM(nn.Module):
         Args:
             input_dim (int): Input feature dimension per timestep (e.g., 2 for RMM1/RMM2)
             hidden_dim (int): Number of hidden units in the LSTM (default: 10)
+            output_dim (int): Output feature dimension per timestep (default: 2)
             num_leads (int): Number of lead times (e.g., 42)
         """
         super().__init__()
@@ -27,7 +28,7 @@ class PerLeadTimeLSTM(nn.Module):
             x (Tensor): Shape (B, T, input_dim)
 
         Returns:
-            Tensor of shape (B, T, input_dim)
+            Tensor of shape (B, T, output_dim)
         """
         B, T, D = x.shape
         assert T == self.num_leads, f"Expected {self.num_leads} leads, got {T}"
@@ -35,12 +36,14 @@ class PerLeadTimeLSTM(nn.Module):
         outputs = []
         for t in range(T):
             xt = x[:, t, :].unsqueeze(1)  # shape: (B, 1, input_dim)
-            yt = self.models[t](xt)       # shape: (B, input_dim)
+            yt = self.models[t](xt)       # shape: (B, 1, output_dim)
             outputs.append(yt)
-        return torch.concat(outputs, dim=1)  # (B, T, input_dim)
+        return torch.concat(outputs, dim=1)  # (B, T, output_dim)
 
 
 class LSTMBlock(nn.Module):
+    """Single-layer LSTM followed by a two-layer tanh MLP head."""
+
     def __init__(self, input_size=2, hidden_size=10, output_size=2):
         super(LSTMBlock, self).__init__()
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, batch_first=True)
@@ -49,9 +52,9 @@ class LSTMBlock(nn.Module):
         self.fc2 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        # x shape: (batch, seq_len=1, input_size=2)
+        # x shape: (batch, seq_len=1, input_size)
         lstm_out, _ = self.lstm(x)         # (batch, 1, hidden)
         x = self.fc1(lstm_out)             # (batch, 1, hidden)
         x = self.activation(x)
-        x = self.fc2(x)                    # (batch, 1, output_size=2)
+        x = self.fc2(x)                    # (batch, 1, output_size)
         return x

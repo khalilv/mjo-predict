@@ -41,18 +41,6 @@ class NormalizeDenormalize:
         """
         return (x - self.mean) / self.std
 
-    def update(self, mean, std):
-        """Update normalization parameters.
-
-        Args:
-            mean: New mean values
-            std: New standard deviation values
-        """
-        assert len(mean) == len(self.mean), f"Length of mean values ({len(mean)}) must match existing mean length ({len(self.mean)})"
-        assert len(std) == len(self.std), f"Length of std values ({len(std)}) must match existing std length ({len(self.std)})"
-        self.mean = torch.tensor(mean, device=self.device, dtype=self.dtype)
-        self.std = torch.tensor(std, device=self.device, dtype=self.dtype)
-
     def denormalize(self, x: torch.Tensor):
         """Denormalize input: x * std + mean.
 

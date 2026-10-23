@@ -1,8 +1,6 @@
 import os
 import copy
-import xarray as xr
 from typing import Optional
-import glob 
 import numpy as np
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, IterableDataset
@@ -29,10 +27,11 @@ class MJOForecastDataModule(LightningDataModule):
             If provided must all be positive integers. Defaults to [] (current timestamp).
         history (list, optional): List of history elements to include in input. 
             If provided must all be negative integers. Defaults to [] (current timestamp).
-        filter_mjo_events (bool, optional): If true, will only load MJO events classified by amplitude > 1 on the start date during evaluation.
-            Defaults to False. 
+        filter_mjo_events (bool, optional): If true, will only load MJO events classified by amplitude > 1 on the start date
+            for training and validation (never applied to test). Defaults to False.
+        filter_mjo_phases (list, optional): MJO phases on the start date to include. Defaults to [] (all phases).
         normalize_data (bool, optional): Flag to normalize data. Defaults to False.
-        max_buffer_size (int): Maximum buffer size for shuffling. Defaults to 100.
+        max_buffer_size (int, optional): Maximum buffer size for shuffling. Defaults to 100.
         batch_size (int, optional): Batch size. Defaults to 64.
         num_workers (int, optional): Number of workers. Defaults to 0.
         pin_memory (bool, optional): Whether to pin memory. Defaults to False.
@@ -98,6 +97,7 @@ class MJOForecastDataModule(LightningDataModule):
             print('Warning: Both input and output data will not be normalized. Model will be run on unnormalized data')
 
     def get_normalization_stats(self, file, variables):
+        """Load per-variable mean and std from a statistics npz file."""
         statistics = np.load(file)
         normalize_mean = np.array([statistics[f"{var}_mean"] for var in variables])
         normalize_std = np.array([statistics[f"{var}_std"] for var in variables])
@@ -113,6 +113,7 @@ class MJOForecastDataModule(LightningDataModule):
         return self.in_variables
     
     def get_forecast_variables(self):
+        """Return forecast variable names (empty if no forecast_dir)."""
         if self.forecast_dir:
             return [f'{v}_forecast' for v in self.in_variables]
         else:
@@ -125,26 +126,13 @@ class MJOForecastDataModule(LightningDataModule):
         return self.out_variables
     
     def get_transforms(self, group: str):
+        """Return a copy of the normalization transform for group 'in', 'out' or 'date'."""
         if group == 'in':
             return copy.deepcopy(self.in_transforms)
         elif group == 'out':
             return copy.deepcopy(self.out_transforms)
         elif group == 'date':
             return copy.deepcopy(self.date_transforms)
-        else:
-            raise ValueError(f"Invalid normalization group name: {group}")
-
-    def update_normalization_stats(self, mean, std, group: str):
-        if not self.normalize_data:
-            print(f"Warning: Updating normalization statistics for normalization group: {group} when normalize_data is False. This will likely have no effect.")
-        else:
-            print(f"Info: Updating normalization statistics for normalization group: {group}")
-        if group == 'in':
-            self.in_transforms.update(mean, std)
-        elif group == 'out':
-            self.out_transforms.update(mean, std)
-        elif group == 'date':
-            self.date_transforms.update(mean, std)
         else:
             raise ValueError(f"Invalid normalization group name: {group}")
 

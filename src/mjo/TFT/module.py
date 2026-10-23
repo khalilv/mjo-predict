@@ -3,7 +3,6 @@
 
 # credits: https://github.com/ashleve/lightning-hydra-template/blob/main/src/models/mnist_module.py
 import os
-import math
 import torch
 from typing import Any, Dict, Union
 from pytorch_lightning import LightningModule
@@ -92,7 +91,7 @@ class MJOForecastModule(LightningModule):
         self.save_outputs = save_outputs
         self.denormalization = None
 
-        #placeholders
+        # placeholders, set from the datamodule before init_network()
         self.in_variables = []
         self.date_variables = []
         self.out_variables = []
@@ -215,7 +214,7 @@ class MJOForecastModule(LightningModule):
             dropout=self.dropout,
             norm_type=self.norm_type
         )
-        if hasattr(self, "pretrained_path") and self.pretrained_path and len(self.pretrained_path) > 0:
+        if self.pretrained_path:
             self.load_pretrained_weights(self.pretrained_path)
 
     def set_denormalization(self, denormalization):
@@ -261,7 +260,6 @@ class MJOForecastModule(LightningModule):
         pred_data = self.net.forward(x_in=x_in)
         pred_data = pred_data.squeeze(dim=-1)
 
-
         batch_loss_mse = self.train_mse(preds=pred_data, targets=target)
         batch_loss_mae = self.train_mae(preds=pred_data, targets=target)
         batch_loss = {**batch_loss_mae, **batch_loss_mse}
@@ -274,7 +272,7 @@ class MJOForecastModule(LightningModule):
             )
 
         self.train_mse.reset()
-        return batch_loss['mse_norm'] #batch_loss['mae_norm']
+        return batch_loss['mse_norm']
 
     def validation_step(self, batch: Any, batch_idx: int):
         """Execute single validation step.
@@ -313,7 +311,7 @@ class MJOForecastModule(LightningModule):
         val_mse = self.val_mse.compute()
         val_mae = self.val_mae.compute()
 
-        #scalar metrics
+        # scalar metrics
         loss_dict = {**val_mse, **val_mae}
         for key in loss_dict.keys():
             self.log(
@@ -325,8 +323,7 @@ class MJOForecastModule(LightningModule):
         self.val_mse.reset()
         self.val_mae.reset()
         return loss_dict
-    
-    
+
     def on_test_epoch_start(self):
         """Create output directory if saving predictions."""
         if self.save_outputs:
@@ -393,7 +390,7 @@ class MJOForecastModule(LightningModule):
         test_mse = self.test_mse.compute()
         test_mae = self.test_mae.compute()
 
-        #scalar metrics
+        # scalar metrics
         loss_dict = {**test_mse, **test_mae}
         for key in loss_dict.keys():
             self.log(

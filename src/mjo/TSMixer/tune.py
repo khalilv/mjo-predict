@@ -21,15 +21,9 @@ def objective(trial):
     """
     # Suggest hyperparameters to optimize
     hidden_size = 2 ** trial.suggest_int('hidden_exp', 5, 10)  # 32 to 1024
-    # ff_size = 2 ** trial.suggest_int('ff_exp', 5, 10)
     num_blocks = trial.suggest_int('num_blocks', 4, 16, step=2)
     lr = trial.suggest_float('lr', 1e-7, 1e-3, log=True)
     dropout = trial.suggest_float('dropout', 0.1, 0.9, step=0.1)
-    # beta_1 = trial.suggest_float("beta_1", 0.85, 0.99, step=0.01)
-    # beta_2 = trial.suggest_float("beta_2", 0.95, 0.999, step=0.01)
-    # weight_decay = trial.suggest_float("weight_decay", 1e-7, 1e-2, log=True)
-    # normalize_before = trial.suggest_categorical("normalize_before", [True, False])
-
 
     # Initialize Lightning with the model and data modules
     cli = LightningCLI(
@@ -60,10 +54,6 @@ def objective(trial):
     cli.model.num_blocks = num_blocks
     cli.model.lr = lr
     cli.model.dropout = dropout
-    # cli.model.beta_1 = beta_1
-    # cli.model.beta_2 = beta_2
-    # cli.model.weight_decay = weight_decay
-    # cli.model.normalize_before = normalize_before
     cli.model.init_network()
 
     # Add pruning callback to stop unpromising trials early
@@ -118,11 +108,11 @@ def run_optimization(n_trials, root_dir):
 def main():
     """Run hyperparameter tuning for TSMixer model using Optuna.
 
-    Performs N trials of hyperparameter optimization using TPE sampling
+    Performs 50 trials of hyperparameter optimization using TPE sampling
     and median pruning. Best trial parameters are saved to best_trial.yaml.
 
     Example:
-        python tune.py --config configs/TSMixer/tune.yaml
+        python src/mjo/TSMixer/tune.py --config <config.yaml>
     """
     # Create CLI to access configuration
     cli = LightningCLI(

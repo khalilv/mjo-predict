@@ -99,9 +99,8 @@ def run_optimization(n_trials, root_dir):
 def main():
     """Run hyperparameter tuning for DLBC model using Optuna.
 
-    Performs N trials of hyperparameter optimization using TPE sampling
+    Performs 25 trials of hyperparameter optimization using TPE sampling
     and median pruning. Best trial parameters are saved to best_trial.yaml.
-
     """
     # Create CLI to access configuration
     cli = LightningCLI(

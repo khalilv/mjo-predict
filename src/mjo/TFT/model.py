@@ -1,6 +1,6 @@
 """
-Temporal Fusion Transformer (TFT)
--------
+Temporal Fusion Transformer (TFT), adapted from Darts
+-----------------------------------------------------
 """
 
 from typing import Union, Tuple, Dict, List
@@ -24,6 +24,8 @@ GLU_FFN = ["GLU", "Bilinear", "ReGLU", "GEGLU", "SwiGLU", "ReLU", "GELU"]
 
 
 class TFTModel(nn.Module):
+    """Temporal Fusion Transformer network."""
+
     def __init__(
         self,
         input_chunk_length: int,
@@ -54,18 +56,12 @@ class TFTModel(nn.Module):
             series, and past and/or future covariates (if the model supports it).
             Also called: Encoder length
         output_chunk_length
-            Number of time steps predicted at once (per chunk) by the internal model. Also, the number of future values
-            from future covariates to use as a model input (if the model supports future covariates). It is not the same
-            as forecast horizon `n` used in `predict()`, which is the desired number of prediction points generated
-            using either a one-shot- or autoregressive forecast. Setting `n <= output_chunk_length` prevents
-            auto-regression. This is useful when the covariates don't extend far enough into the future, or to prohibit
-            the model from using future values of past and / or future covariates for prediction (depending on the
-            model's covariate support).
+            Number of time steps predicted at once, and the number of future covariate values used as input.
             Also called: Decoder length
         output_dim : Tuple[int, int]
             shape of output given by (n_targets, loss_size). (loss_size corresponds to nr_params in other models).
         variables_meta : Dict[str, Dict[str, List[str]]]
-            dict containing variable encoder, decoder variable names for mapping tensors in `_TFTModule.forward()`
+            dict containing variable encoder, decoder variable names for mapping tensors in `forward()`
         num_static_components
             the number of static components (not variables) of the input target series. This is either equal to the
             number of target components or 1.
@@ -77,34 +73,24 @@ class TFTModel(nn.Module):
         num_attention_heads : int
             number of attention heads (4 is a good default)
         full_attention : bool
-            If `True`, applies multi-head attention query on past (encoder) and future (decoder) parts. Otherwise,
-            only queries on future part. Defaults to `False`.
+            Queries always come from the future (decoder) steps and attend to all past (encoder) steps. If `True`,
+            each future step also attends to all future steps; otherwise only to earlier future steps.
         feed_forward
-            Set the feedforward network block. default `GatedResidualNetwork` or one of the  glu variant.
-            Defaults to `GatedResidualNetwork`.
+            Feedforward block: `GatedResidualNetwork` or one of the GLU variants in `GLU_FFN`.
         hidden_continuous_size : int
             default for hidden size for processing continuous variables.
         categorical_embedding_sizes : dict
             A dictionary containing embedding sizes for categorical static covariates. The keys are the column names
             of the categorical static covariates. The values are tuples of integers with
             `(number of unique categories, embedding size)`. For example `{"some_column": (64, 8)}`.
-            Note that `TorchForecastingModels` can only handle numeric data. Consider transforming/encoding your data
-            with `darts.dataprocessing.transformers.static_covariates_transformer.StaticCovariatesTransformer`.
         dropout : float
             Fraction of neurons affected by Dropout.
         add_relative_index : bool
-            Whether to add positional values to future covariates. Defaults to `False`.
-            This allows to use the TFTModel without having to pass future_covariates to `fit()` and `train()`.
-            It gives a value to the position of each step from input and output chunk relative to the prediction
-            point. The values are normalized with `input_chunk_length`.
-        likelihood
-            The likelihood model to be used for probabilistic forecasts. By default, the TFT uses
-            a ``QuantileRegression`` likelihood.
+            Whether to add positional values (relative to the prediction point) to past and future inputs.
         norm_type: str | nn.Module
-            The type of LayerNorm variant to use.
+            The LayerNorm variant to use, either a class or the name of one in `mjo.utils.normalization`.
         **kwargs
-            all parameters required for :class:`darts.models.forecasting.pl_forecasting_module.PLForecastingModule`
-            base class.
+            passed to ``nn.Module``.
         """
 
         super().__init__(**kwargs)
@@ -394,17 +380,6 @@ class TFTModel(nn.Module):
         index[:encoder_length] = index[:encoder_length] / prediction_index
         index[encoder_length:] = index[encoder_length:] / prediction_index
         return index.reshape(1, len(index), 1).repeat(batch_size, 1, 1)
-
-    @staticmethod
-    def get_attention_mask_full(
-        time_steps: int, batch_size: int, dtype: torch.dtype, device: torch.device
-    ) -> torch.Tensor:
-        """
-        Returns causal mask to apply for self-attention layer.
-        """
-        eye = torch.eye(time_steps, dtype=dtype, device=device)
-        mask = torch.cumsum(eye.unsqueeze(0).repeat(batch_size, 1, 1), dim=1)
-        return mask < 1
 
     @staticmethod
     def get_attention_mask_future(
