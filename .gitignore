@@ -145,3 +145,11 @@ plots
 
 #pretrained weights
 pretrained_weights
+# unzipped and generated data (see README)
+data/FuXi/
+data/corrected/
+data/preprocessed*/
+.cache/
+
+# local tool settings
+.claude/

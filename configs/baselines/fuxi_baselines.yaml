@@ -6,9 +6,9 @@ dates:
 
 # File paths
 paths:
-  forecast_dir: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi
-  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
-  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/exps/test/2019-2021/baselines/four_groups
+  forecast_dir: data/FuXi
+  ground_truth: data/observed/rmm.txt
+  output_dir: exps/baselines
 
 # Ensemble member to use (e.g., 'mean', or member number)
 member: mean

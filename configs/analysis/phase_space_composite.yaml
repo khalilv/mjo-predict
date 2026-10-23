@@ -11,14 +11,14 @@ trajectory:
 
 # File paths
 paths:
-  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
-  # bom: /glade/derecho/scratch/kvirji/DATA/MJO/BoM/rmm.74toRealtime.txt
-  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/2002-2017/phase_space
+  ground_truth: data/observed/rmm.txt
+  # bom: data/observed/bom_rmm.74toRealtime.txt
+  output_dir: plots/2002-2017/phase_space
   output_filename: 'phase_space_composite.png'
 
 # Forecast directories
 forecast_dirs: []
-  # - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/bias-correction/LSTM/combined
+  # - data/corrected/lstm
 
 # Labels for each forecast
 forecast_labels: []
@@ -26,7 +26,7 @@ forecast_labels: []
 
 # Ensemble directories (each with path, label, and members)
 ensemble_dirs:
-  - path: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi/
+  - path: data/FuXi/
     label: FuXi-S2S
     members:
       - mean

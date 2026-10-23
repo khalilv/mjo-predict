@@ -1,0 +1,65 @@
+# Date range for analysis
+dates:
+  start: "2019-01-01"
+  end: "2022-01-01"
+
+# File paths
+paths:
+  ground_truth: data/observed/rmm.txt
+  fuxi: data/FuXi
+  output_dir: plots/2019-2021/history-only-with-noaa-indices
+
+# Model and lookback window names
+# 0d row reuses the original RMM-only 0d_hist outputs since with zero
+# history all input PCs (RMM, ROMI, VPM) are empty and results are identical.
+model_names: [(a) TFT, (b) TSMixer]
+lookback_names: [0, 1, 10, 60, 90, 180, 360, 720]
+
+# Forecast directories
+# Organized as nested list: [model][lookback]
+forecast_dirs:
+  - - exps/history_only/TFT/0d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TFT/1d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TFT/10d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TFT/60d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TFT/90d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TFT/180d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TFT/360d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TFT/720d_hist/logs/version_0/outputs
+  - - exps/history_only/TSMixer/0d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TSMixer/1d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TSMixer/10d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TSMixer/60d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TSMixer/90d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TSMixer/180d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TSMixer/360d_hist/logs/version_0/outputs
+    - exps/history_only_noaa/TSMixer/720d_hist/logs/version_0/outputs
+
+# Whether to include FuXi as middle panel in heatmap
+include_fuxi: false
+
+# Plot settings
+plot_settings:
+  fonts:
+    title: 16
+    axis_label: 14
+    tick_label: 14
+    legend: 14
+    colorbar_label: 14
+    title_weight: normal
+    title_label_weight: bold
+
+  labels:
+    x_label: "Lookback window L (days)"
+    y_label: "Lead time (days)"
+    colorbar_label: "BCOR"
+    legend_label: "{threshold} skill threshold"
+    zero_symbol: "$\\varnothing$"
+
+  colormap:
+    name: "YlGnBu"
+    bounds: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
+  threshold: 0.5
+
+  legend_position: "upper right"

@@ -1,43 +1,41 @@
 # Trajectory settings
 trajectory:
-  start_date: '2018-06-28'
+  start_date: '2019-05-13'
   length: 42
 
 # Output
 paths:
-  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/phase_space/
+  output_dir: plots/phase_space/
 
 # Reference time-series files (continuous; sliced by trajectory window).
 # Exactly one entry must have primary: true (used for date alignment).
 # Set transform_to_rmm: true for OMI/ROMI sources to apply (PC1, PC2) -> (PC2, -PC1).
 references:
-  - path: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
+  - path: data/observed/bom_rmm.74toRealtime.txt
+    label: BoM
+    color: darkgray
+    linestyle: '--'
+  - path: data/observed/rmm.txt
     label: Observed
     color: black
     linestyle: '--'
     primary: true
-  - path: /glade/derecho/scratch/kvirji/DATA/MJO/BoM/rmm.74toRealtime.txt
-    label: BoM
-    color: lightgray
-    linestyle: '--'
 
 # Per-init-date single-file forecasts at <path>/<init_date>.txt
 forecasts: []
-  # - path: /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/bias-correction/LSTM/combined
+  # - path: data/corrected/lstm
   #   label: LSTM
   #   color: '#2ca02c'
   #   linestyle: '-'
 
 # Per-init-date member-directory ensembles at <path>/<init_date>/<member>.txt
 ensembles:
-  - path: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi/
+  - path: data/FuXi/
     label: FuXi-S2S
     color: '#1f77b4'
     linestyle: '-'
     members:
       - mean
-      # - '00'
-      # - '05'
 
 # Plot settings
 plot_settings:
@@ -53,7 +51,7 @@ plot_settings:
     title_label_weight: bold
 
   title:
-    template: '{start_date}'
+    template: "{trajectory_length}-day Phase Space Diagram Initialized on 2019-05-12"
 
   axis:
     xlim: [-4, 4]
@@ -61,3 +59,4 @@ plot_settings:
 
   marker_interval: 5
   legend_loc: 'best'
+  legend_order: ['FuXi-S2S', 'Observed', 'BoM']

@@ -5,9 +5,9 @@ dates:
 
 # File paths
 paths:
-  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
-  fuxi: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi
-  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/2019-2021/history-only
+  ground_truth: data/observed/rmm.txt
+  fuxi: data/FuXi
+  output_dir: plots/2019-2021/history-only
 
 # Model and lookback window names
 model_names: [(a) TFT, (b) TSMixer]
@@ -16,20 +16,20 @@ lookback_names: [0, 1, 10, 90, 180, 360, 720]
 # Forecast directories
 # Organized as nested list: [model][lookback]
 forecast_dirs:
-  - - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/0d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/1d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/10d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/90d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/180d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/360d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TFT/720d_hist/logs/version_1/outputs
-  - - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/0d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/1d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/10d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/90d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/180d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/360d_hist/logs/version_1/outputs
-    - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/TSMixer/720d_hist/logs/version_1/outputs
+  - - exps/history_only/TFT/0d_hist/logs/version_0/outputs
+    - exps/history_only/TFT/1d_hist/logs/version_0/outputs
+    - exps/history_only/TFT/10d_hist/logs/version_0/outputs
+    - exps/history_only/TFT/90d_hist/logs/version_0/outputs
+    - exps/history_only/TFT/180d_hist/logs/version_0/outputs
+    - exps/history_only/TFT/360d_hist/logs/version_0/outputs
+    - exps/history_only/TFT/720d_hist/logs/version_0/outputs
+  - - exps/history_only/TSMixer/0d_hist/logs/version_0/outputs
+    - exps/history_only/TSMixer/1d_hist/logs/version_0/outputs
+    - exps/history_only/TSMixer/10d_hist/logs/version_0/outputs
+    - exps/history_only/TSMixer/90d_hist/logs/version_0/outputs
+    - exps/history_only/TSMixer/180d_hist/logs/version_0/outputs
+    - exps/history_only/TSMixer/360d_hist/logs/version_0/outputs
+    - exps/history_only/TSMixer/720d_hist/logs/version_0/outputs
 
 # Whether to include FuXi as middle panel in heatmap
 include_fuxi: false

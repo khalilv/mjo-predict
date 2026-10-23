@@ -5,15 +5,15 @@ dates:
 
 # File paths
 paths:
-  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
-  fuxi: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi
-  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/2019-2021/bias-correction
+  ground_truth: data/observed/rmm.txt
+  fuxi: data/FuXi
+  output_dir: plots/2019-2021/bias-correction
 
 # Forecast directories
 forecast_dirs:
-  - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/baselines/four_groups/mean_bias
-  - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/baselines/four_groups/MLR_with_doy
-  - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/bias-correction/LSTM/combined
+  - data/corrected/mean_bias
+  - data/corrected/mvlr
+  - data/corrected/lstm
 
 # Labels for each forecast (include Fuxi)
 plot_labels:
