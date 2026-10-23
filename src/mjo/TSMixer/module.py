@@ -11,6 +11,7 @@ from mjo.TSMixer.model import TSMixerX
 from mjo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from mjo.utils.metrics import MSE, MAE
 from mjo.utils.RMM.io import save_rmm_indices
+from mjo.utils.ROMI.io import save_romi_indices
 from mjo.utils.data_utils import prep_input
 
 class MJOForecastModule(LightningModule):
@@ -337,13 +338,22 @@ class MJOForecastModule(LightningModule):
             pred_data = pred_data.cpu().numpy()
             for b in range(pred_data.shape[0]):
                 filename = f'{str(in_timestamps[b][-1]).split("T")[0]}.txt'
-                save_rmm_indices(
-                    time=out_timestamps[b],
-                    RMM1=pred_data[b,:,out_variables.index('RMM1')],
-                    RMM2=pred_data[b,:,out_variables.index('RMM2')],
-                    filename=os.path.join(self.output_dir, filename),
-                    method_str='TSMixer'
-                )
+                if 'RMM1' in out_variables:
+                    save_rmm_indices(
+                        time=out_timestamps[b],
+                        RMM1=pred_data[b,:,out_variables.index('RMM1')],
+                        RMM2=pred_data[b,:,out_variables.index('RMM2')],
+                        filename=os.path.join(self.output_dir, filename),
+                        method_str='TSMixer'
+                    )
+                elif 'ROMI1' in out_variables:
+                    save_romi_indices(
+                        time=out_timestamps[b],
+                        ROMI1=pred_data[b,:,out_variables.index('ROMI1')],
+                        ROMI2=pred_data[b,:,out_variables.index('ROMI2')],
+                        filename=os.path.join(self.output_dir, filename),
+                        method_str='TSMixer_ROMI'
+                    )
         return
 
     def on_test_epoch_end(self):

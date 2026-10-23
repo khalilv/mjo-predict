@@ -1,42 +1,48 @@
 # Trajectory settings
 trajectory:
-  start_date: '2017-02-22'
+  start_date: '2018-06-28'
   length: 42
 
-# File paths
+# Output
 paths:
-  ground_truth: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
-  bom: /glade/derecho/scratch/kvirji/DATA/MJO/BoM/rmm.74toRealtime.txt
-  # ecmwf: /glade/derecho/scratch/kvirji/DATA/MJO/U250/ECMWF/2017-02-01.txt
-  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/2019-2021/case_study/2017
+  output_dir: /glade/derecho/scratch/kvirji/mjo-predict/plots/production/phase_space/
 
-# Forecast directories
-forecast_dirs: []
-  # - /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/bias-correction/LSTM/combined
+# Reference time-series files (continuous; sliced by trajectory window).
+# Exactly one entry must have primary: true (used for date alignment).
+# Set transform_to_rmm: true for OMI/ROMI sources to apply (PC1, PC2) -> (PC2, -PC1).
+references:
+  - path: /glade/derecho/scratch/kvirji/DATA/MJO/U250/RMM/rmm.txt
+    label: Observed
+    color: black
+    linestyle: '--'
+    primary: true
+  - path: /glade/derecho/scratch/kvirji/DATA/MJO/BoM/rmm.74toRealtime.txt
+    label: BoM
+    color: lightgray
+    linestyle: '--'
 
-# Labels for each forecast
-forecast_labels: []
-  # - LSTM
+# Per-init-date single-file forecasts at <path>/<init_date>.txt
+forecasts: []
+  # - path: /glade/derecho/scratch/kvirji/mjo-predict/exps/production/2019-2021/bias-correction/LSTM/combined
+  #   label: LSTM
+  #   color: '#2ca02c'
+  #   linestyle: '-'
 
-# Ensemble directories (each with path, label, and members)
-ensemble_dirs:
+# Per-init-date member-directory ensembles at <path>/<init_date>/<member>.txt
+ensembles:
   - path: /glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi/
     label: FuXi-S2S
+    color: '#1f77b4'
+    linestyle: '-'
     members:
       - mean
       # - '00'
       # - '05'
-      # - '10'
-
-# Ground truth label
-gt_label: 'Observed'
 
 # Plot settings
 plot_settings:
-  # Figure size
   figsize: [8, 8]
 
-  # Font sizes and styles
   fonts:
     title: 16
     axis_label: 14
@@ -44,24 +50,14 @@ plot_settings:
     phase_label: 14
     legend: 14
     title_weight: normal
-    title_label_weight: bold  # Only bold subplot labels like (a), (b)
-    # family: sans-serif
+    title_label_weight: bold
 
-  # Plot title template (use {trajectory_length} and {start_date} placeholders)
   title:
     template: '{start_date}'
 
-  # Axis settings
   axis:
     xlim: [-4, 4]
     ylim: [-4, 4]
 
-  # Colormap settings
-  colormap:
-    name: "tab10"
-
-  # Trajectory marker settings
   marker_interval: 5
-
-  # Legend location
   legend_loc: 'best'
