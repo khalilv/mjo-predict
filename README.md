@@ -51,7 +51,7 @@ Not included: the high-dimensional inputs used to compute RMM indices (OLR, ERA5
 | Fig. 1 (history only) | train `configs/{TFT,TSMixer}/history_only/*`, then `python -m mjo.utils.analysis.lead_time_heatmaps --config configs/analysis/history_only_lead_time_heatmaps.yaml` |
 | Fig. 6 (history + FuXi-S2S) | train `configs/{TFT,TSMixer}/fusion/*`, then `... --config configs/analysis/fusion_lead_time_heatmaps.yaml` |
 
-`bash scripts/make_figures.sh` runs them all and writes to `plots/`. The bootstrap significance (1,000 samples) can be slow.
+`bash scripts/make_figures.sh` runs Figs. 2–5, 7 and 8 and writes to `plots/`. The bootstrap significance (1,000 samples) can be slow.
 
 ### Training
 

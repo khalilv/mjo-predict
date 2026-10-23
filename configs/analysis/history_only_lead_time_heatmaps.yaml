@@ -11,20 +11,18 @@ paths:
 
 # Model and lookback window names
 model_names: [(a) TFT, (b) TSMixer]
-lookback_names: [0, 1, 10, 90, 180, 360, 720]
+lookback_names: [1, 10, 90, 180, 360, 720]
 
 # Forecast directories
 # Organized as nested list: [model][lookback]
 forecast_dirs:
-  - - exps/history_only/TFT/0d_hist/logs/version_0/outputs
-    - exps/history_only/TFT/1d_hist/logs/version_0/outputs
+  - - exps/history_only/TFT/1d_hist/logs/version_0/outputs
     - exps/history_only/TFT/10d_hist/logs/version_0/outputs
     - exps/history_only/TFT/90d_hist/logs/version_0/outputs
     - exps/history_only/TFT/180d_hist/logs/version_0/outputs
     - exps/history_only/TFT/360d_hist/logs/version_0/outputs
     - exps/history_only/TFT/720d_hist/logs/version_0/outputs
-  - - exps/history_only/TSMixer/0d_hist/logs/version_0/outputs
-    - exps/history_only/TSMixer/1d_hist/logs/version_0/outputs
+  - - exps/history_only/TSMixer/1d_hist/logs/version_0/outputs
     - exps/history_only/TSMixer/10d_hist/logs/version_0/outputs
     - exps/history_only/TSMixer/90d_hist/logs/version_0/outputs
     - exps/history_only/TSMixer/180d_hist/logs/version_0/outputs
