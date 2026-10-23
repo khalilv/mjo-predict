@@ -1,33 +1,43 @@
-import os 
+import os
 import glob
+import argparse
 import warnings
 import xarray as xr
 import numpy as np
 import xesmf as xe
 from tqdm import tqdm
-from mjo.utils.RMM.eof import detrend_anomalies, latitude_band_average
+from mjo.utils.RMM.eof import TARGET_LAT, TARGET_LON, load_olr, regrid_to_2p5, project_rmm
 from mjo.utils.RMM.io import save_rmm_indices
-from mjo.utils.RMM.FuXi.utils import format, walk_to_forecast_dir
+from mjo.utils.RMM.FuXi.utils import format_forecast, walk_to_forecast_dir
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS.*")
 
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Compute RMM indices for each FuXi-S2S ensemble member using precomputed EOFs.')
+    parser.add_argument('--olr', required=True, help='NOAA interpolated daily OLR netCDF (olr.day.mean.nc), used for history')
+    parser.add_argument('--era5', required=True, help='ERA5 daily zarr with u_component_of_wind, used for history')
+    parser.add_argument('--eof-dir', required=True, help='Directory with eof.nc, seasonal_cycle.nc, normalization_factor.nc (from RMM/eof.py)')
+    parser.add_argument('--forecast-dir', required=True, help='Raw FuXi-S2S output root with one subdirectory per init date (from FuXi/generate.py)')
+    parser.add_argument('--output-dir', default='data/FuXi', help='Output root; writes <YYYY-MM-DD>/<member>.txt (default: %(default)s)')
+    parser.add_argument('--members', type=int, default=51, help='Number of ensemble members (default: %(default)s)')
+    return parser.parse_args()
+
+
 def main():
     """Compute RMM indices from FuXi forecasts using precomputed EOFs."""
-    olr_file_path = '/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc'
-    era5_file_path = '/glade/derecho/scratch/kvirji/DATA/era5_daily/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr'
-    reference_dir = f'/glade/derecho/scratch/kvirji/DATA/MJO/U200/EOF'
-    save_dir = f'/glade/derecho/scratch/kvirji/DATA/MJO/U200/FuXi'
-    forecast_root_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/'
-
+    args = parse_args()
+    forecast_root_dir = args.forecast_dir
+    save_dir = args.output_dir
     os.makedirs(save_dir, exist_ok=True)
 
     # Load reference datasets and EOFs
-    raw_olr_ds = xr.open_dataset(olr_file_path).isel(time=slice(249, None))  # Remove corrupted dates
-    raw_era5_ds = xr.open_zarr(era5_file_path)
-    seasonal_cycle_ds = xr.open_dataset(os.path.join(reference_dir, 'seasonal_cycle.nc')).load()
-    normalization_factor_ds = xr.open_dataset(os.path.join(reference_dir, 'normalization_factor.nc')).load()
-    EOF_ds = xr.open_dataset(os.path.join(reference_dir, 'eof.nc')).load()
+    raw_olr_ds = load_olr(args.olr)
+    raw_era5_ds = xr.open_zarr(args.era5)
+    seasonal_cycle_ds = xr.open_dataset(os.path.join(args.eof_dir, 'seasonal_cycle.nc')).load()
+    normalization_factor_ds = xr.open_dataset(os.path.join(args.eof_dir, 'normalization_factor.nc')).load()
+    EOF_ds = xr.open_dataset(os.path.join(args.eof_dir, 'eof.nc')).load()
 
     gt_olr_data = raw_olr_ds['olr'].to_dataset().load()
     gt_u850_data = raw_era5_ds['u_component_of_wind'].sel(level=850, drop=True).to_dataset(name='u850').load()
@@ -36,15 +46,10 @@ def main():
     raw_olr_ds.close()
     raw_era5_ds.close()
 
-    # Regrid ground truth data to 2.5°
-    target_lat = np.arange(-90, 90, 2.5)
-    target_lon = np.arange(0, 360, 2.5)
-    gt_olr_regridder = xe.Regridder(gt_olr_data, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True)
-    gt_u850_regridder = xe.Regridder(gt_u850_data, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True)
-    gt_u200_regridder = xe.Regridder(gt_u200_data, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True)
-    gt_olr_data_2p5d = gt_olr_regridder(gt_olr_data)
-    gt_u850_data_2p5d = gt_u850_regridder(gt_u850_data)
-    gt_u200_data_2p5d = gt_u200_regridder(gt_u200_data)
+    # Regrid observed history to 2.5°
+    gt_olr_data_2p5d = regrid_to_2p5(gt_olr_data)
+    gt_u850_data_2p5d = regrid_to_2p5(gt_u850_data)
+    gt_u200_data_2p5d = regrid_to_2p5(gt_u200_data)
 
     start_dates = sorted(os.listdir(forecast_root_dir))
 
@@ -52,109 +57,61 @@ def main():
     forecast_regridder = None
     for start_date in start_dates:
         root = os.path.join(forecast_root_dir, start_date)
-        if os.path.isdir(root) and not start_date.startswith('.'):
-            # Navigate to member directory
-            forecast_dir = walk_to_forecast_dir(root)
+        if not os.path.isdir(root) or start_date.startswith('.'):
+            continue
+        forecast_dir = walk_to_forecast_dir(root)
 
-            for member in tqdm(range(51), f'Processing ensemble members for {forecast_dir}'):
-                member_str = f"{member:02d}"
+        for member in tqdm(range(args.members), f'Processing ensemble members for {forecast_dir}'):
+            member_str = f"{member:02d}"
 
-                # Load forecast data
-                forecast_files = sorted(glob.glob(os.path.join(forecast_dir, member_str, "*.nc")))
-                forecast_ds = xr.open_mfdataset(forecast_files, combine='by_coords', parallel=False)
-                init_time = forecast_ds['time'].isel(time=0)
+            # Load forecast data
+            forecast_files = sorted(glob.glob(os.path.join(forecast_dir, member_str, "*.nc")))
+            forecast_ds = xr.open_mfdataset(forecast_files, combine='by_coords', parallel=False)
+            init_time = forecast_ds['time'].isel(time=0)
 
-                # Create output directory for this initialization date
-                member_dir = os.path.join(save_dir, f'{str(init_time.time.values).split("T")[0]}')
-                os.makedirs(member_dir, exist_ok=True)
+            # Create output directory for this initialization date
+            member_dir = os.path.join(save_dir, f'{str(init_time.time.values).split("T")[0]}')
+            os.makedirs(member_dir, exist_ok=True)
 
-                if os.path.exists(os.path.join(member_dir, f'{member_str}.txt')):
-                    print(os.path.join(member_dir, f'{member_str}.txt') + ' already exists.')
-                    continue
+            out_path = os.path.join(member_dir, f'{member_str}.txt')
+            if os.path.exists(out_path):
+                print(out_path + ' already exists.')
+                continue
 
-                # Format forecast to (time, lat, lon) for each variable
-                forecast_ds = format(forecast_ds.load())
-                forecast_ds.close()
+            # Format forecast to (time, lat, lon) for each variable
+            forecast_ds = format_forecast(forecast_ds.load())
+            forecast_ds.close()
 
-                # Extract ground truth data for 119 days before forecast init
-                gt_end_date = init_time
-                gt_start_date = gt_end_date - np.timedelta64(118, 'D')
-                period = slice(gt_start_date, gt_end_date)
-                gt_olr_data_2p5d_slice = gt_olr_data_2p5d.sel(time=period)
-                gt_u850_data_2p5d_slice = gt_u850_data_2p5d.sel(time=period)
-                gt_u200_data_2p5d_slice  = gt_u200_data_2p5d.sel(time=period)
+            # Observed history: 119 days up to and including the init date
+            gt_end_date = init_time
+            gt_start_date = gt_end_date - np.timedelta64(118, 'D')
+            period = slice(gt_start_date, gt_end_date)
+            gt_olr_data_2p5d_slice = gt_olr_data_2p5d.sel(time=period)
+            gt_u850_data_2p5d_slice = gt_u850_data_2p5d.sel(time=period)
+            gt_u200_data_2p5d_slice = gt_u200_data_2p5d.sel(time=period)
 
-                # Regrid forecast to 2.5°
-                if not forecast_regridder:
-                    forecast_regridder = xe.Regridder(forecast_ds, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True)
-                forecast_ds_2p5d = forecast_regridder(forecast_ds)
+            # Regrid forecast to 2.5° (regridder weights are reused across members/dates)
+            if not forecast_regridder:
+                forecast_regridder = xe.Regridder(forecast_ds, {'lat': TARGET_LAT, 'lon': TARGET_LON}, 'bilinear', periodic=True)
+            forecast_ds_2p5d = forecast_regridder(forecast_ds)
 
-                # Extract required variables (convert TTR to OLR by negation)
-                forecast_olr_data_2p5d = (forecast_ds_2p5d['ttr'] * -1).to_dataset(name='olr')
-                forecast_u850_data_2p5d = forecast_ds_2p5d['u850'].to_dataset(name='u850')
-                forecast_u200_data_2p5d = forecast_ds_2p5d['u250'].to_dataset(name='u200')
+            # Extract required variables (convert TTR to OLR by negation).
+            # NOTE: FuXi u250 forecast is stored as 'u200' and spliced onto ERA5 200 hPa history.
+            forecast_olr_data_2p5d = (forecast_ds_2p5d['ttr'] * -1).to_dataset(name='olr')
+            forecast_u850_data_2p5d = forecast_ds_2p5d['u850'].to_dataset(name='u850')
+            forecast_u200_data_2p5d = forecast_ds_2p5d['u250'].to_dataset(name='u200')
 
-                # Combine ground truth history with forecast
-                combined_olr_data_2p5d = xr.concat([gt_olr_data_2p5d_slice, forecast_olr_data_2p5d], dim='time')
-                combined_u850_data_2p5d = xr.concat([gt_u850_data_2p5d_slice, forecast_u850_data_2p5d], dim='time')
-                combined_u200_data_2p5d = xr.concat([gt_u200_data_2p5d_slice, forecast_u200_data_2p5d], dim='time')
+            # Combine observed history with forecast
+            combined_olr_data_2p5d = xr.concat([gt_olr_data_2p5d_slice, forecast_olr_data_2p5d], dim='time')
+            combined_u850_data_2p5d = xr.concat([gt_u850_data_2p5d_slice, forecast_u850_data_2p5d], dim='time')
+            combined_u200_data_2p5d = xr.concat([gt_u200_data_2p5d_slice, forecast_u200_data_2p5d], dim='time')
 
-                # Remove seasonal cycle
-                olr_seasonal_cycle = seasonal_cycle_ds['olr'].sel(dayofyear=combined_olr_data_2p5d.time.dt.dayofyear)
-                u850_seasonal_cycle = seasonal_cycle_ds['u850'].sel(dayofyear=combined_u850_data_2p5d.time.dt.dayofyear)
-                u200_seasonal_cycle = seasonal_cycle_ds['u200'].sel(dayofyear=combined_u200_data_2p5d.time.dt.dayofyear)
+            time, RMM1, RMM2 = project_rmm(
+                combined_olr_data_2p5d, combined_u850_data_2p5d, combined_u200_data_2p5d,
+                seasonal_cycle_ds, normalization_factor_ds, EOF_ds
+            )
+            save_rmm_indices(time=time, RMM1=RMM1, RMM2=RMM2, filename=out_path, method_str='FuXi')
 
-                olr_anomalies = combined_olr_data_2p5d - olr_seasonal_cycle
-                u850_anomalies = combined_u850_data_2p5d - u850_seasonal_cycle
-                u200_anomalies = combined_u200_data_2p5d - u200_seasonal_cycle
-
-                # Detrend using 120-day running mean
-                detrended_olr_anomalies = detrend_anomalies(olr_anomalies)
-                detrended_u850_anomalies = detrend_anomalies(u850_anomalies)
-                detrended_u200_anomalies = detrend_anomalies(u200_anomalies)
-
-                # Average over 15°S-15°N latitude band
-                detrended_olr_anomalies_latitude_band_avg = latitude_band_average(detrended_olr_anomalies)
-                detrended_u850_anomalies_latitude_band_avg = latitude_band_average(detrended_u850_anomalies)
-                detrended_u200_anomalies_latitude_band_avg = latitude_band_average(detrended_u200_anomalies)
-
-                # Normalize using factors from reference period
-                detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg / normalization_factor_ds['olr']
-                detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg / normalization_factor_ds['u850']
-                detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg / normalization_factor_ds['u200']
-
-                # Drop missing values
-                detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
-                detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
-                detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
-
-                # Align timesteps across all variables
-                olr, u850, u200 = xr.align(
-                    detrended_olr_anomalies_latitude_band_avg_norm,
-                    detrended_u850_anomalies_latitude_band_avg_norm,
-                    detrended_u200_anomalies_latitude_band_avg_norm,
-                    join='inner'
-                )
-
-                # Combine data into single array (time, 3 × lon)
-                X = xr.concat([olr['olr'], u850['u850'], u200['u200']], dim='lon')
-
-                # Project onto reference EOFs to compute RMM indices
-                RMM1 = X.values @ EOF_ds['EOF1'].values
-                RMM2 = X.values @ EOF_ds['EOF2'].values
-
-                # Normalize RMM indices using reference period standard deviations
-                RMM1_norm = RMM1 / normalization_factor_ds['RMM1_std'].values
-                RMM2_norm = RMM2 / normalization_factor_ds['RMM2_std'].values
-
-                # Save indices to text file
-                save_rmm_indices(
-                    time=olr.time.values,
-                    RMM1=RMM1_norm,
-                    RMM2=RMM2_norm,
-                    filename=os.path.join(member_dir, f'{member_str}.txt'),
-                    method_str='FuXi'
-                )
 
 if __name__ == "__main__":
     main()

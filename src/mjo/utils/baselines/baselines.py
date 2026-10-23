@@ -9,22 +9,14 @@ from mjo.utils.analysis.utils import load_config
 
 
 def create_phase_group_map(num_groups):
-    """
-    Create phase grouping map based on number of groups.
-
-    Args:
-        num_groups: Number of phase groups (1, 4, or 8)
-
-    Returns:
-        Dictionary mapping original phases (1-8) to group numbers
-    """
+    """Map MJO phases 1-8 to 1, 4 or 8 phase groups."""
     if num_groups == 1:
         # All phases map to single group
         return {i: 1 for i in range(1, 9)}
     elif num_groups == 4:
         # Combine adjacent phases into 4 groups
         return {
-            1: 1, 8: 1,  
+            1: 1, 8: 1,
             2: 2, 3: 2,
             4: 3, 5: 3,
             6: 4, 7: 4
@@ -39,6 +31,16 @@ def create_phase_group_map(num_groups):
 def get_grouped_phase(phase, phase_group_map):
     """Map individual MJO phase to grouped phase using provided mapping."""
     return phase_group_map[phase]
+
+def build_features(fc_df, include_doy=False):
+    """Stack forecast RMM1/RMM2 (and optionally day-of-year features) into a (T, M) array."""
+    if include_doy:
+        doy = fc_df.index.day_of_year.values
+        doy_sin = np.sin(2*np.pi*doy/366)
+        doy_cos = np.sin(2*np.pi*doy/366)  # NOTE: uses sin (likely meant cos); kept as-is to preserve results
+        return np.array([fc_df['RMM1'].values, fc_df['RMM2'].values, doy_sin, doy_cos]).T
+    return np.array([fc_df['RMM1'].values, fc_df['RMM2'].values]).T
+
 
 def load_data(forecast_dir, ground_truth_path, start_date, end_date, member=None, phase_group_map=None, filter_low_amplitude_samples=False, include_doy=False):
     """Load and organize forecast and ground truth data by MJO phase."""
@@ -67,14 +69,7 @@ def load_data(forecast_dir, ground_truth_path, start_date, end_date, member=None
         raw_phase = int(ground_truth.loc[init_date].phase)
         phase = get_grouped_phase(raw_phase, phase_group_map) if phase_group_map else raw_phase
 
-        # Include day-of-year as features if requested
-        if include_doy:
-            doy = fc_df.index.day_of_year.values
-            doy_sin = np.sin(2*np.pi*doy/366)
-            doy_cos = np.sin(2*np.pi*doy/366)
-            fc_sample = np.array([fc_df['RMM1'].values, fc_df['RMM2'].values, doy_sin, doy_cos]).T
-        else:
-            fc_sample = np.array([fc_df['RMM1'].values, fc_df['RMM2'].values]).T
+        fc_sample = build_features(fc_df, include_doy)
 
         gt_sample = np.array([gt_df['RMM1'].values, gt_df['RMM2'].values]).T
         forecast_data[phase].append(fc_sample)
@@ -157,14 +152,7 @@ def run_inference(forecast_dir, save_dir, ground_truth_path, model, start_date, 
         raw_phase = int(ground_truth.loc[init_date].phase)
         phase = get_grouped_phase(raw_phase, phase_group_map) if phase_group_map else raw_phase
 
-        # Include day-of-year features if requested
-        if include_doy:
-            doy = fc_df.index.day_of_year.values
-            doy_sin = np.sin(2*np.pi*doy/366)
-            doy_cos = np.sin(2*np.pi*doy/366)
-            fc_sample = np.array([fc_df['RMM1'].values, fc_df['RMM2'].values, doy_sin, doy_cos]).T
-        else:
-            fc_sample = np.array([fc_df['RMM1'].values, fc_df['RMM2'].values]).T
+        fc_sample = build_features(fc_df, include_doy)
 
         # Apply correction and save
         corrected = correct_forecast(fc_sample, phase, model, method)
@@ -174,15 +162,12 @@ def run_inference(forecast_dir, save_dir, ground_truth_path, model, start_date, 
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description='Generate bias-corrected MJO forecasts using statistical baseline methods',
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+    parser = argparse.ArgumentParser(description='Generate bias-corrected MJO forecasts using statistical baseline methods')
     parser.add_argument(
         '--config',
         type=str,
         required=True,
-        help='Path to YAML configuration file (required)'
+        help='YAML config, e.g. configs/baselines/fuxi_baselines.yaml'
     )
     return parser.parse_args()
 
@@ -218,7 +203,7 @@ def main():
     for method_name in methods:
         if method_name == 'mean_bias':
             print(f"\n{'='*60}")
-            print(f"Training mean bias correction model")
+            print("Training mean bias correction model")
             print(f"{'='*60}")
 
             # Load training data
@@ -269,7 +254,7 @@ def main():
             print(f"Warning: Unknown method '{method_name}', skipping...")
 
     print(f"\n{'='*60}")
-    print(f"All methods completed successfully!")
+    print("All methods completed successfully!")
     print(f"{'='*60}")
 
 

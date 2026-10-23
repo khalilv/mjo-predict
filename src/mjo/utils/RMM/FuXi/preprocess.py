@@ -1,12 +1,23 @@
 import os
+import argparse
 import numpy as np
 from tqdm import tqdm
 from mjo.utils.RMM.io import load_rmm_indices
 
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Convert FuXi-S2S RMM forecasts to per-init-date <date>_members.npz and <date>_mean.npz.')
+    parser.add_argument('--forecast-dir', default='data/FuXi', help='FuXi RMM root with <YYYY-MM-DD>/{00..50,mean}.txt (default: %(default)s)')
+    parser.add_argument('--output-dir', default='data/preprocessed/FuXi', help='Output directory for npz files (default: %(default)s)')
+    return parser.parse_args()
+
+
 def main():
     """Load FuXi RMM indices, add phase and day-of-year features, and save to .npz format."""
-    forecast_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/FuXi"
-    output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/U250/preprocessed/FuXi"
+    args = parse_args()
+    forecast_dir = args.forecast_dir
+    output_dir = args.output_dir
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -18,7 +29,8 @@ def main():
         RMM1_mean, RMM2_mean, phase_mean, amplitude_mean, phase_sin_mean, phase_cos_mean, doy_sin_mean, doy_cos_mean, year_mean, dates_mean = [], [], [], [], [], [], [], [], [], []
 
         members = sorted(os.listdir(root))
-        if len(members) < 52: print(f'Warning: only found {len(members)} members for {start_date}')
+        if len(members) < 52:
+            print(f'Warning: only found {len(members)} members for {start_date}')
 
         # Process each ensemble member
         for member in tqdm(members, f'Processing members for {start_date}'):
@@ -61,7 +73,7 @@ def main():
                 year.append(member_df['year'].values)
                 dates.append(member_df.index.values)
 
-        # Validate all ensemble members have matching dates
+        # Validate all ensemble members have matching dates and save
         assert np.all(dates == dates[0]), f'Found non-matching dates within ensemble members in {root}'
         np.savez(os.path.join(output_dir, f'{start_date}_members.npz'),
             RMM1=np.array(RMM1),
@@ -88,6 +100,7 @@ def main():
             doy_cos=np.array(doy_cos_mean),
             year=np.array(year_mean),
             dates=np.array(dates_mean[0]))
+
 
 if __name__ == "__main__":
     main()

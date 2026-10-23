@@ -2,7 +2,7 @@ import os
 import xarray as xr
 
 
-def format(forecast_ds):
+def format_forecast(forecast_ds):
     """Convert FuXi forecast from lead_time to absolute time coordinates and split channels into variables."""
     # Convert lead time to absolute time
     init_time = forecast_ds['time'].isel(time=0)

@@ -1,16 +1,19 @@
 import os
+import argparse
 import numpy as np
 import xarray as xr
-import xesmf as xe
 from scipy.sparse.linalg import svds
 
-from mjo.utils.RMM.eof import compute_seasonal_cycle
+from mjo.utils.RMM.eof import compute_seasonal_cycle, load_olr, regrid_to_2p5
+
+# Reference period (starts after the 176-day OLR gap in 1985)
+REFERENCE_START = '1985-10-04'
+REFERENCE_END = '2012-12-31'
+LAT_MIN, LAT_MAX = -20.0, 20.0
 
 
 def eof_filter(olr_anom_ref, period_min=30.0, period_max=96.0):
-    """2D spectral filter: eastward-propagating + zonal mean, 30-96 day.
-    Eastward = freq * wn < 0 in numpy FFT convention.
-    Input shape (T, nlat, nlon)."""
+    """Keep 30-96 day eastward-propagating (freq * wn < 0 in numpy FFT convention) and zonal-mean signal of a (T, nlat, nlon) array."""
     T, nlat, nlon = olr_anom_ref.shape
     spec = np.fft.fft2(olr_anom_ref, axes=(0, 2))
     freqs = np.fft.fftfreq(T, d=1.0)
@@ -25,8 +28,7 @@ def eof_filter(olr_anom_ref, period_min=30.0, period_max=96.0):
 
 
 def broadband_filter(olr_anom_ref, period_min=20.0, period_max=96.0):
-    """Temporal-only bandpass filter, all wavenumbers.
-    Input shape (T, nlat, nlon)."""
+    """Apply a 20-96 day temporal bandpass (all wavenumbers) to a (T, nlat, nlon) array."""
     T = olr_anom_ref.shape[0]
     spec = np.fft.rfft(olr_anom_ref, axis=0)
     freqs = np.fft.rfftfreq(T, d=1.0)
@@ -36,8 +38,7 @@ def broadband_filter(olr_anom_ref, period_min=20.0, period_max=96.0):
 
 
 def fill_missing_days(arr):
-    """Linearly interpolate fully-NaN timesteps in a (T, nlat, nlon) array.
-    Edge NaNs that cannot be bracketed are left as NaN."""
+    """Linearly interpolate NaN timesteps in a (T, nlat, nlon) array in place; unbracketed edge NaNs are left as NaN."""
     T = arr.shape[0]
     flat = arr.reshape(T, -1)
     bad = np.isnan(flat).any(axis=1)
@@ -53,39 +54,80 @@ def fill_missing_days(arr):
 
 
 def build_doy_window_masks(doys, half_width=60, period=365):
-    """Boolean masks (366, T) selecting samples within ±half_width days
-    of each DOY (circular). DOY 366 reuses DOY 365's window."""
+    """Return (366, T) masks of samples within +-half_width days of each DOY (circular; DOY 366 reuses DOY 365)."""
     doys = np.asarray(doys)
     target = np.minimum(np.arange(1, 367), 365)
     diff = np.abs(doys[None, :] - target[:, None]) % period
     return np.minimum(diff, period - diff) <= half_width
 
 
+def fill_and_drop(anom):
+    """Fill missing days of an OLR anomaly DataArray and drop unfillable edges; return (values, times, doys)."""
+    anom_np = fill_missing_days(anom.values.astype(np.float64))
+    good_t = ~np.isnan(anom_np.reshape(anom_np.shape[0], -1)).any(axis=1)
+    return anom_np[good_t], anom.time.values[good_t], anom.time.dt.dayofyear.values[good_t]
+
+
+def romi_smooth(flat):
+    """Remove the 40-day trailing mean and apply a 9-day trailing running mean to (T, npix) anomalies (expanding means at the start)."""
+    npix = flat.shape[1]
+
+    # 40-day trailing mean removal
+    cumsum = np.cumsum(flat, axis=0)
+    rm40 = np.zeros_like(flat)
+    rm40[39:] = (cumsum[39:] - np.vstack([np.zeros((1, npix)), cumsum[:-40]])) / 40.0
+    for i in range(39):
+        rm40[i] = cumsum[i] / (i + 1)
+    detrended = flat - rm40
+
+    # 9-day trailing running mean
+    cumsum_dt = np.cumsum(detrended, axis=0)
+    smoothed = np.zeros_like(detrended)
+    smoothed[8:] = (cumsum_dt[8:] - np.vstack([np.zeros((1, npix)), cumsum_dt[:-9]])) / 9.0
+    for i in range(8):
+        smoothed[i] = cumsum_dt[i] / (i + 1)
+    return smoothed
+
+
+def project_romi(smoothed, doys, eofs_flat, sigma):
+    """Project smoothed (T, npix) anomalies onto DOY-specific EOFs and normalize by sigma; return (ROMI1, ROMI2)."""
+    eof_idx = np.minimum(doys, 366) - 1
+    day_eofs = eofs_flat[eof_idx]
+    romi1 = np.einsum('tp,tp->t', smoothed, day_eofs[:, 0, :]) / sigma
+    romi2 = np.einsum('tp,tp->t', smoothed, day_eofs[:, 1, :]) / sigma
+    return romi1, romi2
+
+
+def load_romi_eofs(eof_dir):
+    """Load per-DOY ROMI EOFs from eof_dir/eof.nc; return (eofs_flat (366, 2, npix), sigma)."""
+    eof_ds = xr.open_dataset(os.path.join(eof_dir, 'eof.nc')).load()
+    sigma = float(eof_ds.attrs['sigma'])
+    eofs = eof_ds['EOF'].sel(mode=[1, 2]).values
+    return eofs.reshape(366, 2, eofs.shape[2] * eofs.shape[3]), sigma
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Compute per-DOY ROMI EOFs, sigma and seasonal cycle from NOAA OLR.')
+    parser.add_argument('--olr', required=True, help='NOAA interpolated daily OLR netCDF (olr.day.mean.nc)')
+    parser.add_argument('--output-dir', required=True, help='Directory to write eof.nc, seasonal_cycle.nc, normalization_factor.nc')
+    return parser.parse_args()
+
+
 def main():
     """Compute per-DOY ROMI EOFs from NOAA OLR."""
-    # Reference period (starts after 176-day OLR gap in 1985)
-    reference_start = '1985-10-04'
-    reference_end = '2012-12-31'
-    lat_min, lat_max = -20.0, 20.0
-
-    olr_file_path = '/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc'
-    save_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/ROMI/EOF'
+    args = parse_args()
+    save_dir = args.output_dir
     os.makedirs(save_dir, exist_ok=True)
 
     # Load and regrid OLR to 2.5 deg, subset to 20S-20N
-    raw_olr_ds = xr.open_dataset(olr_file_path).isel(time=slice(249, None))
-    olr_data = raw_olr_ds['olr'].to_dataset()
-    target_lat = np.arange(-90, 90, 2.5)
-    target_lon = np.arange(0, 360, 2.5)
-    regridder = xe.Regridder(
-        olr_data, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True
-    )
-    olr_2p5 = regridder(olr_data).sel(lat=slice(lat_min, lat_max))
+    olr_data = load_olr(args.olr)['olr'].to_dataset()
+    olr_2p5 = regrid_to_2p5(olr_data).sel(lat=slice(LAT_MIN, LAT_MAX))
     nlat, nlon = olr_2p5.sizes['lat'], olr_2p5.sizes['lon']
     assert nlat == 17 and nlon == 144
 
     # Extract reference period
-    ref_olr = olr_2p5.sel(time=slice(reference_start, reference_end)).load()
+    ref_olr = olr_2p5.sel(time=slice(REFERENCE_START, REFERENCE_END)).load()
 
     # Remove seasonal cycle (mean + 3 harmonics)
     seasonal_cycle = compute_seasonal_cycle(ref_olr)
@@ -94,11 +136,7 @@ def main():
     ref_olr_anom = (ref_olr - ref_seasonal)['olr']
 
     # Fill missing days and drop unfillable edges
-    ref_olr_anom_np = ref_olr_anom.values.astype(np.float64)
-    ref_olr_anom_np = fill_missing_days(ref_olr_anom_np)
-    good_t = ~np.isnan(ref_olr_anom_np.reshape(ref_olr_anom_np.shape[0], -1)).any(axis=1)
-    ref_olr_anom_np = ref_olr_anom_np[good_t]
-    ref_doys = ref_olr_anom.time.dt.dayofyear.values[good_t]
+    ref_olr_anom_np, _, ref_doys = fill_and_drop(ref_olr_anom)
     T_ref = ref_olr_anom_np.shape[0]
     print(f'Reference period: T_ref={T_ref} days')
 
@@ -120,7 +158,7 @@ def main():
         samples = filtered_flat[doy_masks[d]]
         samples = samples - samples.mean(axis=0, keepdims=True)
         _, S, Vt = svds(samples, k=3)
-        S = S[::-1]; Vt = Vt[::-1]
+        S, Vt = S[::-1], Vt[::-1]  # svds returns ascending singular values
         eofs[d, 0, :] = Vt[0]
         eofs[d, 1, :] = Vt[1]
         total = np.sum(samples ** 2)
@@ -168,8 +206,8 @@ def main():
     )
     out_ds = xr.Dataset({'EOF': eofs_da, 'var_explained': var_da})
     out_ds.attrs['sigma'] = sigma
-    out_ds.attrs['reference_start'] = reference_start
-    out_ds.attrs['reference_end'] = reference_end
+    out_ds.attrs['reference_start'] = REFERENCE_START
+    out_ds.attrs['reference_end'] = REFERENCE_END
     out_ds.to_netcdf(os.path.join(save_dir, 'eof.nc'))
 
     sigma_ds = xr.Dataset({'sigma': ((), sigma)})

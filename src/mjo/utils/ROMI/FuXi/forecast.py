@@ -1,55 +1,53 @@
 import os
 import glob
+import argparse
 import warnings
 import xarray as xr
 import numpy as np
 import xesmf as xe
 from tqdm import tqdm
-from mjo.utils.ROMI.eof import fill_missing_days
+from mjo.utils.RMM.eof import TARGET_LAT, TARGET_LON, load_olr, regrid_to_2p5
+from mjo.utils.ROMI.eof import LAT_MIN, LAT_MAX, fill_and_drop, romi_smooth, project_romi, load_romi_eofs
 from mjo.utils.ROMI.io import save_romi_indices
 from mjo.utils.RMM.FuXi.utils import walk_to_forecast_dir
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS.*")
 
+# Observed warm-up days: 40 (trailing mean) + 9 (running mean)
+HISTORY_DAYS = 49
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Compute ROMI from FuXi-S2S ensemble-mean OLR forecasts using precomputed per-DOY EOFs.')
+    parser.add_argument('--olr', required=True, help='NOAA interpolated daily OLR netCDF (olr.day.mean.nc), used for history')
+    parser.add_argument('--eof-dir', required=True, help='Directory with eof.nc and seasonal_cycle.nc (from ROMI/eof.py)')
+    parser.add_argument('--forecast-dir', required=True, help='Raw FuXi-S2S output root with <YYYYMMDD>/.../member/mean/ (from FuXi/mean.py)')
+    parser.add_argument('--output-dir', required=True, help='Output root; writes <YYYY-MM-DD>/mean.txt')
+    return parser.parse_args()
+
 
 def main():
     """Compute ROMI indices from FuXi ensemble-mean OLR forecasts using precomputed per-DOY EOFs.
 
-    Only the ensemble mean is processed; per-member ROMI is skipped. Requires
-    mean.py to have been run first (presence of `mean/.done` sentinel).
-
-    Preprocessing matches observation.py exactly:
-    1. Remove seasonal cycle (mean + 3 harmonics)
-    2. 40-day trailing mean removal
-    3. 9-day trailing running mean
-    4. Project onto per-DOY EOFs, normalize by sigma
+    Only the ensemble mean is processed; dates without a `mean/.done` sentinel are skipped.
+    Preprocessing matches observation.py: seasonal cycle removal, 40-day trailing mean removal,
+    9-day trailing running mean, projection onto per-DOY EOFs normalized by sigma.
     """
-    olr_file_path = '/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc'
-    reference_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/ROMI/EOF'
-    save_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/ROMI/FuXi'
-    forecast_root_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/'
-    history_days = 49  # 40 (trailing mean) + 9 (running mean) warm-up
-
+    args = parse_args()
+    forecast_root_dir = args.forecast_dir
+    save_dir = args.output_dir
     os.makedirs(save_dir, exist_ok=True)
 
     # Load reference data
-    seasonal_cycle_ds = xr.open_dataset(os.path.join(reference_dir, 'seasonal_cycle.nc')).load()
-    eof_ds = xr.open_dataset(os.path.join(reference_dir, 'eof.nc')).load()
-    sigma = float(eof_ds.attrs['sigma'])
-    eofs = eof_ds['EOF'].sel(mode=[1, 2]).values
-    npix = eofs.shape[2] * eofs.shape[3]
-    eofs_flat = eofs.reshape(366, 2, npix)
+    seasonal_cycle_ds = xr.open_dataset(os.path.join(args.eof_dir, 'seasonal_cycle.nc')).load()
+    eofs_flat, sigma = load_romi_eofs(args.eof_dir)
 
-    # Load observed OLR for history
-    raw_olr_ds = xr.open_dataset(olr_file_path).isel(time=slice(249, None))
+    # Load observed OLR for history, regrid to 2.5 deg and subset to 20S-20N
+    raw_olr_ds = load_olr(args.olr)
     gt_olr_data = raw_olr_ds['olr'].to_dataset().load()
     raw_olr_ds.close()
-
-    # Regrid observed OLR to 2.5 deg, subset to 20S-20N
-    target_lat = np.arange(-90, 90, 2.5)
-    target_lon = np.arange(0, 360, 2.5)
-    gt_regridder = xe.Regridder(gt_olr_data, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True)
-    gt_olr_2p5 = gt_regridder(gt_olr_data).sel(lat=slice(-20, 20))
+    gt_olr_2p5 = regrid_to_2p5(gt_olr_data).sel(lat=slice(LAT_MIN, LAT_MAX))
 
     start_dates = sorted(
         d for d in os.listdir(forecast_root_dir)
@@ -77,66 +75,32 @@ def main():
         # Load ensemble-mean forecast (already formatted by mean.py: absolute time, channels split)
         forecast_files = sorted(glob.glob(os.path.join(mean_dir, '*.nc')))
         forecast_ds = xr.open_mfdataset(forecast_files, combine='by_coords', parallel=False).load()
-        init_time = np.datetime64(f'{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}')
+        init_time = np.datetime64(out_dir_name)
 
-        # Regrid forecast OLR to 2.5 deg, subset to 20S-20N
+        # Regrid forecast OLR to 2.5 deg (weights reused across dates), subset to 20S-20N
         if not forecast_regridder:
-            forecast_regridder = xe.Regridder(forecast_ds, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True)
+            forecast_regridder = xe.Regridder(forecast_ds, {'lat': TARGET_LAT, 'lon': TARGET_LON}, 'bilinear', periodic=True)
         forecast_2p5 = forecast_regridder(forecast_ds)
-        forecast_olr = (forecast_2p5['ttr'] * -1).to_dataset(name='olr').sel(lat=slice(-20, 20))
+        forecast_olr = (forecast_2p5['ttr'] * -1).to_dataset(name='olr').sel(lat=slice(LAT_MIN, LAT_MAX))
         forecast_ds.close()
 
-        # Observed history before init date
-        gt_end = init_time
-        gt_start = gt_end - np.timedelta64(history_days - 1, 'D')
-        gt_slice = gt_olr_2p5.sel(time=slice(gt_start, gt_end))
-
-        # Concatenate history + forecast
+        # Concatenate observed history (up to and including init date) with forecast
+        gt_start = init_time - np.timedelta64(HISTORY_DAYS - 1, 'D')
+        gt_slice = gt_olr_2p5.sel(time=slice(gt_start, init_time))
         combined = xr.concat([gt_slice, forecast_olr], dim='time')
 
         # Remove seasonal cycle
         seasonal = seasonal_cycle_ds['olr'].sel(dayofyear=combined.time.dt.dayofyear)
         anom = (combined - seasonal)['olr']
 
-        # Fill missing days
-        anom_np = anom.values.astype(np.float64)
-        anom_np = fill_missing_days(anom_np)
-        good_t = ~np.isnan(anom_np.reshape(anom_np.shape[0], -1)).any(axis=1)
-        anom_np = anom_np[good_t]
-        times = anom.time.values[good_t]
-        doys = anom.time.dt.dayofyear.values[good_t]
-        T = anom_np.shape[0]
-        flat = anom_np.reshape(T, npix)
-
-        # 40-day trailing mean removal
-        cumsum = np.cumsum(flat, axis=0)
-        rm40 = np.zeros_like(flat)
-        rm40[39:] = (cumsum[39:] - np.vstack([np.zeros((1, npix)), cumsum[:-40]])) / 40.0
-        for i in range(39):
-            rm40[i] = cumsum[i] / (i + 1)
-        detrended = flat - rm40
-
-        # 9-day trailing running mean (tapered at start)
-        cumsum_dt = np.cumsum(detrended, axis=0)
-        smoothed = np.zeros_like(detrended)
-        smoothed[8:] = (cumsum_dt[8:] - np.vstack([np.zeros((1, npix)), cumsum_dt[:-9]])) / 9.0
-        for i in range(8):
-            smoothed[i] = cumsum_dt[i] / (i + 1)
-
-        # Keep only forecast days (after init date)
+        # Fill missing days, filter, and keep only forecast days (after init date)
+        anom_np, times, doys = fill_and_drop(anom)
+        smoothed = romi_smooth(anom_np.reshape(anom_np.shape[0], -1))
         forecast_mask = times > init_time
-        smoothed = smoothed[forecast_mask]
-        fc_times = times[forecast_mask]
-        fc_doys = doys[forecast_mask]
 
-        # Project onto per-DOY EOFs, normalize by sigma
-        eof_idx = np.minimum(fc_doys, 366) - 1
-        day_eofs = eofs_flat[eof_idx]
-        romi1 = np.einsum('tp,tp->t', smoothed, day_eofs[:, 0, :]) / sigma
-        romi2 = np.einsum('tp,tp->t', smoothed, day_eofs[:, 1, :]) / sigma
-
+        romi1, romi2 = project_romi(smoothed[forecast_mask], doys[forecast_mask], eofs_flat, sigma)
         save_romi_indices(
-            time=fc_times, ROMI1=romi1, ROMI2=romi2,
+            time=times[forecast_mask], ROMI1=romi1, ROMI2=romi2,
             filename=out_path, method_str='FuXi_ROMI_mean',
         )
 

@@ -1,9 +1,11 @@
 import os
+import argparse
 import pandas as pd
 import numpy as np
 from mjo.utils.ROMI.io import load_romi_indices
 from mjo.utils.plot import correlation_scatter_plot
 from mjo.utils.analysis.utils import compute_bcor
+from mjo.utils.RMM.preprocess import TRAIN_START_DATE, VAL_START_DATE, TEST_START_DATE, TEST_END_DATE
 
 
 def subset_romi_data(df, start_date, end_date, compute_statistics):
@@ -34,26 +36,28 @@ def subset_romi_data(df, start_date, end_date, compute_statistics):
         return subset_df
 
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Split computed ROMI into train/val/test npz files and validate against NOAA ROMI.')
+    parser.add_argument('--romi', required=True, help='Computed ROMI text file (from ROMI/observation.py)')
+    parser.add_argument('--noaa-romi', required=True, help='NOAA ROMI in the same text format, used for validation')
+    parser.add_argument('--output-dir', required=True, help='Output directory for {train,val,test,statistics}.npz')
+    return parser.parse_args()
+
+
 def main():
     """Split ROMI data into train/val/test sets, compute statistics, and validate against NOAA ROMI."""
-    train_start_date = '2002-01-01'
-    val_start_date = '2018-01-01'
-    test_start_date = '2019-01-01'
-    test_end_date = '2022-02-12'
-
-    input_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/ROMI/observed/romi.txt"
-    noaa_filepath = "/glade/derecho/scratch/kvirji/DATA/MJO/ROMI/observed/noaa_romi.txt"
-    output_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/ROMI/preprocessed"
-
+    args = parse_args()
+    output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
-    input_df = load_romi_indices(input_filepath)
+    input_df = load_romi_indices(args.romi)
 
-    train_df, mean, std = subset_romi_data(input_df, train_start_date, val_start_date, True)
-    val_df = subset_romi_data(input_df, val_start_date, test_start_date, False)
-    test_df = subset_romi_data(input_df, test_start_date, test_end_date, False)
+    train_df, mean, std = subset_romi_data(input_df, TRAIN_START_DATE, VAL_START_DATE, True)
+    val_df = subset_romi_data(input_df, VAL_START_DATE, TEST_START_DATE, False)
+    test_df = subset_romi_data(input_df, TEST_START_DATE, TEST_END_DATE, False)
 
-    # Save normalization statistics (currently not normalizing ROMI1/ROMI2/amplitude)
+    # Save normalization statistics (PCs, amplitude and periodic features are not normalized; only year is)
     np.savez(os.path.join(output_dir, 'statistics.npz'),
             ROMI1_mean=0.0,
             ROMI2_mean=0.0,
@@ -87,7 +91,7 @@ def main():
         print(f'Saved {name}.npz ({len(df)} rows)')
 
     # Validate against NOAA ROMI (analog of BoM-vs-ours RMM check)
-    noaa_df = load_romi_indices(noaa_filepath)
+    noaa_df = load_romi_indices(args.noaa_romi)
     aligned_df = pd.merge(input_df, noaa_df, left_index=True, right_index=True,
                           how='inner', suffixes=('_ours', '_noaa')).dropna()
 

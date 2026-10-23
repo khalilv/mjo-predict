@@ -1,12 +1,14 @@
 import os
-import time 
+import time
 import glob
+import argparse
 import numpy as np
 import xarray as xr
 import pandas as pd
 import xesmf as xe
 import onnxruntime as ort
 from copy import deepcopy
+from mjo.utils.RMM.eof import load_olr
 
 FUXI_VARIABLES = [
     ('geopotential', 'z'),
@@ -50,15 +52,10 @@ def load_cds_data(path):
 
     return ds
 
-def load_olr_data(path):
-    """Load OLR data and remove corrupted initial dates."""
-    ds = xr.open_dataset(path).isel(time=slice(249, None))  # Remove corrupted dates
-    return ds
-
 def regrid_to(ds, lat, lon):
     """Regrid dataset to target lat/lon grid using bilinear interpolation."""
-    olr_regridder = xe.Regridder(ds, {'lat': lat, 'lon': lon}, 'bilinear', periodic=True)
-    ds = olr_regridder(ds)
+    regridder = xe.Regridder(ds, {'lat': lat, 'lon': lon}, 'bilinear', periodic=True)
+    ds = regridder(ds)
     return ds
 
 def slice_to(ds, start_date, end_date):
@@ -67,7 +64,7 @@ def slice_to(ds, start_date, end_date):
     ds = ds.sel(time=period)
     return ds
 
-def format(ds):
+def format_input(ds):
     """Convert dataset variables into FuXi model input format with channel dimension."""
     formatted_ds = []
     channel = []
@@ -150,20 +147,6 @@ def print_dataarray(ds, msg='', n=10):
 
     print(msg)
 
-def save_with_progress(ds, save_name, dtype=np.float32):
-    """Save dataset to NetCDF with progress bar."""
-    from dask.diagnostics import ProgressBar
-
-    if 'time' in ds.dims:
-        ds = ds.assign_coords(time=ds.time.astype(np.datetime64))
-
-    ds = ds.astype(dtype)
-    obj = ds.to_netcdf(save_name, compute=False)
-
-    with ProgressBar():
-        obj.compute()
-
-
 def save_like(output, input, member, lead_time, save_dir=""):
     """Save forecast output with proper coordinates and dimensions."""
     if save_dir:
@@ -184,7 +167,6 @@ def save_like(output, input, member, lead_time, save_dir=""):
         ).astype(np.float32)
         save_name = os.path.join(save_dir, f'{lead_time:02d}.nc')
         ds.to_netcdf(save_name)
-
 
 
 def load_model(model_path: str, device: str = "cpu"):
@@ -258,14 +240,11 @@ def run_inference(
                 os.makedirs(save, exist_ok=True)
                 save_like(output[b:b+1], input, member, lead_time, save)
 
-            if step > total_step:
-                break
-
         run_time = time.perf_counter() - start
         print(f'Inference member done, take {run_time:.2f} sec')
 
 def batch_input(input, batch_size):
-    """Generate batches of consecutive time pairs from input data, filtering for 1st of month."""
+    """Yield batches of two-day (t-1, t) inputs initialized on the 1st of each month."""
     batch = []
     init_time_strs = []
     time_values = input.time.values
@@ -297,22 +276,34 @@ def batch_input(input, batch_size):
         yield xr.concat(batch, dim='batch'), init_time_strs
 
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Generate FuXi-S2S ensemble forecasts initialized on the 1st of each month.')
+    parser.add_argument('--model', required=True, help='FuXi-S2S ONNX model (fuxi_s2s.onnx)')
+    parser.add_argument('--era5', required=True, help='WeatherBench2 ERA5 daily zarr')
+    parser.add_argument('--olr', required=True, help='NOAA interpolated daily OLR netCDF (olr.day.mean.nc)')
+    parser.add_argument('--u100-dir', required=True, help='Directory of CDS ERA5 100 m u-wind netCDF files')
+    parser.add_argument('--v100-dir', required=True, help='Directory of CDS ERA5 100 m v-wind netCDF files')
+    parser.add_argument('--output-dir', required=True, help='Output root; writes <YYYYMMDD>/member/<NN>/<lead>.nc')
+    parser.add_argument('--start-date', default='2022-12-31', help='First date of input data (default: %(default)s)')
+    parser.add_argument('--end-date', default='2023-12-31', help='Last date of input data (default: %(default)s)')
+    parser.add_argument('--device', default='cuda', choices=['cuda', 'cpu'], help='ONNX runtime device (default: %(default)s)')
+    parser.add_argument('--batch-size', type=int, default=1, help='Init dates per batch (default: %(default)s)')
+    parser.add_argument('--steps', type=int, default=215, help='Forecast lead days (default: %(default)s)')
+    parser.add_argument('--members', type=int, default=51, help='Number of ensemble members (default: %(default)s)')
+    return parser.parse_args()
+
+
 def main():
     """Generate FuXi S2S ensemble forecasts from ERA5 and OLR initial conditions."""
-    start_date = '2022-12-31'
-    end_date = '2023-12-31'
-    model = "/glade/derecho/scratch/kvirji/mjo-predict/pretrained_weights/model-1.0/fuxi_s2s.onnx"
-    device = "cuda"
-    batch_size = 1
-    total_steps = 215
-    total_members = 51
-    save_dir = "/glade/derecho/scratch/kvirji/DATA/MJO/FuXi/generated/"
+    args = parse_args()
+    start_date, end_date = args.start_date, args.end_date
 
     # Load input datasets
-    wb2_ds = load_wb2_data('/glade/derecho/scratch/kvirji/DATA/era5_daily/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr')
-    olr_ds = load_olr_data('/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc')
-    u100_ds = load_cds_data('/glade/derecho/scratch/kvirji/DATA/100u')
-    v100_ds = load_cds_data('/glade/derecho/scratch/kvirji/DATA/100v')
+    wb2_ds = load_wb2_data(args.era5)
+    olr_ds = load_olr(args.olr)
+    u100_ds = load_cds_data(args.u100_dir)
+    v100_ds = load_cds_data(args.v100_dir)
 
     # Slice to target time period
     wb2_ds = slice_to(wb2_ds, start_date, end_date)
@@ -332,28 +323,28 @@ def main():
 
     # Clean and format for FuXi model
     ds = clean(wb2_ds)
-    input = format(ds)
+    input = format_input(ds)
     input = input.sel(lat=input.lat[::-1])  # Reverse latitude (N to S)
 
     print_dataarray(input)
 
     # Load FuXi S2S model
     start = time.perf_counter()
-    model = load_model(model, device)
+    model = load_model(args.model, args.device)
     print(f'FuXi took {time.perf_counter() - start:.2f} sec to load.')
 
     # Run inference in batches
-    for batch, time_strs in batch_input(input, batch_size=batch_size):
+    for batch, time_strs in batch_input(input, batch_size=args.batch_size):
         print('Processing: ', time_strs)
         run_inference(
             model,
             batch,
-            total_steps,
-            total_members,
+            args.steps,
+            args.members,
             time_strs,
-            save_dir=save_dir
+            save_dir=args.output_dir
         )
-  
+
 
 if __name__ == "__main__":
     main()

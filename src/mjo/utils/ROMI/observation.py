@@ -1,31 +1,33 @@
 import os
+import argparse
 import numpy as np
 import xarray as xr
-import xesmf as xe
 
-from mjo.utils.ROMI.eof import fill_missing_days
+from mjo.utils.RMM.eof import load_olr, regrid_to_2p5
+from mjo.utils.ROMI.eof import LAT_MIN, LAT_MAX, fill_and_drop, romi_smooth, project_romi, load_romi_eofs
 from mjo.utils.ROMI.io import save_romi_indices
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Compute observed ROMI from NOAA OLR using precomputed per-DOY EOFs.')
+    parser.add_argument('--olr', required=True, help='NOAA interpolated daily OLR netCDF (olr.day.mean.nc)')
+    parser.add_argument('--eof-dir', required=True, help='Directory with eof.nc and seasonal_cycle.nc (from ROMI/eof.py)')
+    parser.add_argument('--output', required=True, help='Output ROMI text file')
+    parser.add_argument('--start-date', default='1985-10-04', help='First date to compute (default: %(default)s)')
+    parser.add_argument('--end-date', default='2022-12-31', help='Last date to compute (default: %(default)s)')
+    return parser.parse_args()
 
 
 def main():
     """Compute observed ROMI time series from NOAA OLR using precomputed per-DOY EOFs."""
-    start_date = '1985-10-04'
-    end_date = '2022-12-31'
-
-    olr_file_path = '/glade/derecho/scratch/kvirji/DATA/NOAA/OLR/PSL_interpolated/olr.day.mean.nc'
-    reference_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/ROMI/EOF'
-    save_dir = '/glade/derecho/scratch/kvirji/DATA/MJO/ROMI/observed'
-    os.makedirs(save_dir, exist_ok=True)
+    args = parse_args()
+    start_date, end_date = args.start_date, args.end_date
+    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
 
     # Load and regrid OLR to 2.5 deg, subset to 20S-20N
-    raw_olr_ds = xr.open_dataset(olr_file_path).isel(time=slice(249, None))
-    olr_data = raw_olr_ds['olr'].to_dataset()
-    target_lat = np.arange(-90, 90, 2.5)
-    target_lon = np.arange(0, 360, 2.5)
-    regridder = xe.Regridder(
-        olr_data, {'lat': target_lat, 'lon': target_lon}, 'bilinear', periodic=True
-    )
-    olr_2p5 = regridder(olr_data).sel(lat=slice(-20, 20))
+    olr_data = load_olr(args.olr)['olr'].to_dataset()
+    olr_2p5 = regrid_to_2p5(olr_data).sel(lat=slice(LAT_MIN, LAT_MAX))
 
     # Load extra lead-in days for the 40-day running mean warm-up
     lead_in = 50
@@ -33,43 +35,21 @@ def main():
     olr_2p5 = olr_2p5.sel(time=slice(lead_start, end_date)).load()
 
     # Load precomputed seasonal cycle and EOFs
-    seasonal_cycle_ds = xr.open_dataset(os.path.join(reference_dir, 'seasonal_cycle.nc'))
-    eof_ds = xr.open_dataset(os.path.join(reference_dir, 'eof.nc'))
-    sigma = float(eof_ds.attrs['sigma'])
-    eofs = eof_ds['EOF'].sel(mode=[1, 2]).values
-    npix = eofs.shape[2] * eofs.shape[3]
-    eofs_flat = eofs.reshape(366, 2, npix)
-    print(f'Loaded EOFs: shape {eofs.shape}, sigma={sigma:.6f}')
+    seasonal_cycle_ds = xr.open_dataset(os.path.join(args.eof_dir, 'seasonal_cycle.nc'))
+    eofs_flat, sigma = load_romi_eofs(args.eof_dir)
+    print(f'Loaded EOFs: shape {eofs_flat.shape}, sigma={sigma:.6f}')
 
     # Remove seasonal cycle (mean + 3 harmonics)
     seasonal = seasonal_cycle_ds['olr'].sel(dayofyear=olr_2p5.time.dt.dayofyear)
     anom = (olr_2p5 - seasonal)['olr']
 
     # Fill missing days and drop unfillable edges
-    anom_np = anom.values.astype(np.float64)
-    anom_np = fill_missing_days(anom_np)
-    good_t = ~np.isnan(anom_np.reshape(anom_np.shape[0], -1)).any(axis=1)
-    anom_np = anom_np[good_t]
-    all_times = anom.time.values[good_t]
-    all_doys = anom.time.dt.dayofyear.values[good_t]
+    anom_np, all_times, all_doys = fill_and_drop(anom)
     T = anom_np.shape[0]
-    flat = anom_np.reshape(T, npix)
     print(f'After fill+drop: T={T}')
 
-    # 40-day trailing mean removal
-    cumsum = np.cumsum(flat, axis=0)
-    rm40 = np.zeros_like(flat)
-    rm40[39:] = (cumsum[39:] - np.vstack([np.zeros((1, npix)), cumsum[:-40]])) / 40.0
-    for i in range(39):
-        rm40[i] = cumsum[i] / (i + 1)
-    detrended = flat - rm40
-
-    # 9-day trailing running mean (tapered at start with expanding mean)
-    cumsum_dt = np.cumsum(detrended, axis=0)
-    smoothed = np.zeros_like(detrended)
-    smoothed[8:] = (cumsum_dt[8:] - np.vstack([np.zeros((1, npix)), cumsum_dt[:-9]])) / 9.0
-    for i in range(8):
-        smoothed[i] = cumsum_dt[i] / (i + 1)
+    # 40-day trailing mean removal and 9-day trailing running mean
+    smoothed = romi_smooth(anom_np.reshape(T, -1))
 
     # Trim lead-in days
     date_mask = all_times >= np.datetime64(start_date)
@@ -79,18 +59,14 @@ def main():
     print(f'After trimming lead-in: T={smoothed.shape[0]}')
 
     # Project onto DOY-specific EOFs and normalize by sigma
-    eof_idx = np.minimum(doys, 366) - 1
-    day_eofs = eofs_flat[eof_idx]
-    romi1 = np.einsum('tp,tp->t', smoothed, day_eofs[:, 0, :]) / sigma
-    romi2 = np.einsum('tp,tp->t', smoothed, day_eofs[:, 1, :]) / sigma
+    romi1, romi2 = project_romi(smoothed, doys, eofs_flat, sigma)
     print(f'ROMI1 std: {romi1.std():.3f}, ROMI2 std: {romi2.std():.3f}')
 
     save_romi_indices(
         time=times, ROMI1=romi1, ROMI2=romi2,
-        filename=os.path.join(save_dir, 'romi.txt'),
+        filename=args.output,
         method_str='Kiladis14_ROMI:_OLR_only',
     )
-    print(f'Saved to {os.path.join(save_dir, "romi.txt")}')
 
 
 if __name__ == '__main__':
