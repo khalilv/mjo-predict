@@ -56,6 +56,8 @@ Not included: the raw inputs used to compute indices (NOAA OLR, ERA5 from [Weath
 
 Figs. 2–5, 7 and 8 need only the shipped data; `bash scripts/make_figures.sh` runs them all and writes to `plots/`. The bootstrap significance (1,000 samples) makes Figs. 2–5 slow.
 
+The no-history (∅) columns of Figs. 1 and 6 came from runs with the model inputs zeroed out, which the configs do not reproduce.
+
 ### Training
 
 ```bash
@@ -80,7 +82,7 @@ Hyperparameters can be tuned with `src/mjo/{TFT,TSMixer,DLBC}/tune.py --config <
 
 ### Computing MJO indices from raw data
 
-Each script takes `--help`. RMM follows Wheeler & Hendon (2004) with a 1979-09-07 to 2001-12-31 reference period.
+Each script takes `--help`. RMM follows Wheeler & Hendon (2004) with a 1979-09-07 to 2001-12-31 reference period, using OLR and zonal winds at 850 and 250 hPa (`--upper-level`; the ECMWF S2S archive provides 200 hPa).
 
 ```bash
 python src/mjo/utils/RMM/eof.py --olr OLR.nc --era5 ERA5.zarr --output-dir EOF_DIR                       # EOFs, seasonal cycle, normalization

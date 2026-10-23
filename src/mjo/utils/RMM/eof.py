@@ -108,28 +108,28 @@ def get_zonal_average_of_temporal_std(latitude_band_avg):
     return latitude_band_avg.std(dim='time').mean(dim='lon')
 
 
-def project_rmm(olr_ds, u850_ds, u200_ds, seasonal_cycle_ds, normalization_factor_ds, EOF_ds):
-    """Project daily olr/u850/u200 fields onto precomputed EOFs and return (time, RMM1, RMM2)."""
+def project_rmm(olr_ds, u850_ds, u_upper_ds, seasonal_cycle_ds, normalization_factor_ds, EOF_ds):
+    """Project daily olr/u850/u_upper fields onto precomputed EOFs and return (time, RMM1, RMM2)."""
     # Remove seasonal cycle
     olr_anomalies = olr_ds - seasonal_cycle_ds['olr'].sel(dayofyear=olr_ds.time.dt.dayofyear)
     u850_anomalies = u850_ds - seasonal_cycle_ds['u850'].sel(dayofyear=u850_ds.time.dt.dayofyear)
-    u200_anomalies = u200_ds - seasonal_cycle_ds['u200'].sel(dayofyear=u200_ds.time.dt.dayofyear)
+    u_upper_anomalies = u_upper_ds - seasonal_cycle_ds['u_upper'].sel(dayofyear=u_upper_ds.time.dt.dayofyear)
 
     # Detrend using 120-day running mean, average over 15S-15N and normalize by reference factors
     olr = latitude_band_average(detrend_anomalies(olr_anomalies)) / normalization_factor_ds['olr']
     u850 = latitude_band_average(detrend_anomalies(u850_anomalies)) / normalization_factor_ds['u850']
-    u200 = latitude_band_average(detrend_anomalies(u200_anomalies)) / normalization_factor_ds['u200']
+    u_upper = latitude_band_average(detrend_anomalies(u_upper_anomalies)) / normalization_factor_ds['u_upper']
 
     # Drop missing values and align timesteps across all variables
-    olr, u850, u200 = xr.align(
+    olr, u850, u_upper = xr.align(
         olr.dropna(dim='time', how='any'),
         u850.dropna(dim='time', how='any'),
-        u200.dropna(dim='time', how='any'),
+        u_upper.dropna(dim='time', how='any'),
         join='inner'
     )
 
     # Combine into single array (time, 3 x lon) and project onto EOFs
-    X = xr.concat([olr['olr'], u850['u850'], u200['u200']], dim='lon')
+    X = xr.concat([olr['olr'], u850['u850'], u_upper['u_upper']], dim='lon')
     RMM1 = X.values @ EOF_ds['EOF1'].values
     RMM2 = X.values @ EOF_ds['EOF2'].values
 
@@ -145,6 +145,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Compute RMM EOFs, seasonal cycle and normalization factors over the reference period.')
     parser.add_argument('--olr', required=True, help='NOAA interpolated daily OLR netCDF (olr.day.mean.nc)')
     parser.add_argument('--era5', required=True, help='ERA5 daily zarr with u_component_of_wind on pressure levels')
+    parser.add_argument('--upper-level', type=int, default=250, help='ERA5 upper-tropospheric wind level in hPa (default: %(default)s, as in the paper)')
     parser.add_argument('--output-dir', required=True, help='Directory to write eof.nc, seasonal_cycle.nc, normalization_factor.nc and plots')
     return parser.parse_args()
 
@@ -168,76 +169,76 @@ def main():
     # Extract variables
     olr_data = raw_olr_ds['olr'].to_dataset()
     u850_data = raw_era5_ds['u_component_of_wind'].sel(level=850, drop=True).to_dataset(name='u850')
-    u200_data = raw_era5_ds['u_component_of_wind'].sel(level=200, drop=True).to_dataset(name='u200')
+    u_upper_data = raw_era5_ds['u_component_of_wind'].sel(level=args.upper_level, drop=True).to_dataset(name='u_upper')
 
     # Regrid to 2.5° resolution
     olr_data_2p5d = regrid_to_2p5(olr_data)
     u850_data_2p5d = regrid_to_2p5(u850_data)
-    u200_data_2p5d = regrid_to_2p5(u200_data)
+    u_upper_data_2p5d = regrid_to_2p5(u_upper_data)
 
     # Extract reference period
     reference_period = slice(REFERENCE_START, REFERENCE_END)
     ref_olr_data_2p5d = olr_data_2p5d.sel(time=reference_period).load()
     ref_u850_data_2p5d = u850_data_2p5d.sel(time=reference_period).load()
-    ref_u200_data_2p5d = u200_data_2p5d.sel(time=reference_period).load()
+    ref_u_upper_data_2p5d = u_upper_data_2p5d.sel(time=reference_period).load()
 
     # Compute seasonal cycle using first three harmonics
     olr_seasonal_cycle = compute_seasonal_cycle(ref_olr_data_2p5d)
     u850_seasonal_cycle = compute_seasonal_cycle(ref_u850_data_2p5d)
-    u200_seasonal_cycle = compute_seasonal_cycle(ref_u200_data_2p5d)
+    u_upper_seasonal_cycle = compute_seasonal_cycle(ref_u_upper_data_2p5d)
 
     seasonal_cycle_ds = xr.Dataset({
         'olr': olr_seasonal_cycle['olr'],
         'u850': u850_seasonal_cycle['u850'],
-        'u200': u200_seasonal_cycle['u200']
+        'u_upper': u_upper_seasonal_cycle['u_upper']
     })
     seasonal_cycle_ds.to_netcdf(os.path.join(save_dir, 'seasonal_cycle.nc'))
 
     # Align seasonal cycle with actual dates
     olr_seasonal_cycle = olr_seasonal_cycle.sel(dayofyear=ref_olr_data_2p5d.time.dt.dayofyear)
     u850_seasonal_cycle = u850_seasonal_cycle.sel(dayofyear=ref_u850_data_2p5d.time.dt.dayofyear)
-    u200_seasonal_cycle = u200_seasonal_cycle.sel(dayofyear=ref_u200_data_2p5d.time.dt.dayofyear)
+    u_upper_seasonal_cycle = u_upper_seasonal_cycle.sel(dayofyear=ref_u_upper_data_2p5d.time.dt.dayofyear)
 
     # Remove seasonal cycle
     olr_anomalies = ref_olr_data_2p5d - olr_seasonal_cycle
     u850_anomalies = ref_u850_data_2p5d - u850_seasonal_cycle
-    u200_anomalies = ref_u200_data_2p5d - u200_seasonal_cycle
+    u_upper_anomalies = ref_u_upper_data_2p5d - u_upper_seasonal_cycle
 
     # Detrend using 120-day running mean
     detrended_olr_anomalies = detrend_anomalies(olr_anomalies)
     detrended_u850_anomalies = detrend_anomalies(u850_anomalies)
-    detrended_u200_anomalies = detrend_anomalies(u200_anomalies)
+    detrended_u_upper_anomalies = detrend_anomalies(u_upper_anomalies)
 
     # Average over 15°S-15°N latitude band
     detrended_olr_anomalies_latitude_band_avg = latitude_band_average(detrended_olr_anomalies)
     detrended_u850_anomalies_latitude_band_avg = latitude_band_average(detrended_u850_anomalies)
-    detrended_u200_anomalies_latitude_band_avg = latitude_band_average(detrended_u200_anomalies)
+    detrended_u_upper_anomalies_latitude_band_avg = latitude_band_average(detrended_u_upper_anomalies)
 
     # Compute normalization factors (zonal mean of temporal std)
     olr_normalization_factor = get_zonal_average_of_temporal_std(detrended_olr_anomalies_latitude_band_avg)
     u850_normalization_factor = get_zonal_average_of_temporal_std(detrended_u850_anomalies_latitude_band_avg)
-    u200_normalization_factor = get_zonal_average_of_temporal_std(detrended_u200_anomalies_latitude_band_avg)
+    u_upper_normalization_factor = get_zonal_average_of_temporal_std(detrended_u_upper_anomalies_latitude_band_avg)
 
     # Normalize by standard deviation
     detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg / olr_normalization_factor
     detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg / u850_normalization_factor
-    detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg / u200_normalization_factor
+    detrended_u_upper_anomalies_latitude_band_avg_norm = detrended_u_upper_anomalies_latitude_band_avg / u_upper_normalization_factor
 
     # Drop missing values
     detrended_olr_anomalies_latitude_band_avg_norm = detrended_olr_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
     detrended_u850_anomalies_latitude_band_avg_norm = detrended_u850_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
-    detrended_u200_anomalies_latitude_band_avg_norm = detrended_u200_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
+    detrended_u_upper_anomalies_latitude_band_avg_norm = detrended_u_upper_anomalies_latitude_band_avg_norm.dropna(dim='time', how='any')
 
     # Align timesteps across all variables
-    olr, u850, u200 = xr.align(
+    olr, u850, u_upper = xr.align(
         detrended_olr_anomalies_latitude_band_avg_norm,
         detrended_u850_anomalies_latitude_band_avg_norm,
-        detrended_u200_anomalies_latitude_band_avg_norm,
+        detrended_u_upper_anomalies_latitude_band_avg_norm,
         join='inner'
     )
 
     # Combine data into single array (time, 3 × lon)
-    X = xr.concat([olr['olr'], u850['u850'], u200['u200']], dim='lon')
+    X = xr.concat([olr['olr'], u850['u850'], u_upper['u_upper']], dim='lon')
 
     # Compute SVD to get EOFs
     _, S, Vt = np.linalg.svd(X.values, full_matrices=False)
@@ -259,7 +260,7 @@ def main():
     EOF1_reshaped = EOF1.reshape(3, -1)
     EOF2_reshaped = EOF2.reshape(3, -1)
     longitudes = olr.lon.values
-    variable_labels = ['OLR', 'U850', 'U200']
+    variable_labels = ['OLR', 'U850', f'U{args.upper_level}']
 
     # Plot EOF patterns
     eof_pattern_plot(
@@ -288,7 +289,7 @@ def main():
     normalization_factor_ds = xr.Dataset({
         'olr': olr_normalization_factor['olr'],
         'u850': u850_normalization_factor['u850'],
-        'u200': u200_normalization_factor['u200'],
+        'u_upper': u_upper_normalization_factor['u_upper'],
         'RMM1_std': RMM1_std,
         'RMM2_std': RMM2_std,
     })

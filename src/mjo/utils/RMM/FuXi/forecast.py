@@ -20,6 +20,7 @@ def parse_args():
     parser.add_argument('--era5', required=True, help='ERA5 daily zarr with u_component_of_wind, used for history')
     parser.add_argument('--eof-dir', required=True, help='Directory with eof.nc, seasonal_cycle.nc, normalization_factor.nc (from RMM/eof.py)')
     parser.add_argument('--forecast-dir', required=True, help='Raw FuXi-S2S output root with one subdirectory per init date (from FuXi/generate.py)')
+    parser.add_argument('--upper-level', type=int, default=250, help='Upper-tropospheric wind level in hPa; FuXi-S2S provides u250 (default: %(default)s)')
     parser.add_argument('--output-dir', default='data/FuXi', help='Output root; writes <YYYY-MM-DD>/<member>.txt (default: %(default)s)')
     parser.add_argument('--members', type=int, default=51, help='Number of ensemble members (default: %(default)s)')
     return parser.parse_args()
@@ -41,7 +42,7 @@ def main():
 
     gt_olr_data = raw_olr_ds['olr'].to_dataset().load()
     gt_u850_data = raw_era5_ds['u_component_of_wind'].sel(level=850, drop=True).to_dataset(name='u850').load()
-    gt_u200_data = raw_era5_ds['u_component_of_wind'].sel(level=200, drop=True).to_dataset(name='u200').load()
+    gt_u_upper_data = raw_era5_ds['u_component_of_wind'].sel(level=args.upper_level, drop=True).to_dataset(name='u_upper').load()
 
     raw_olr_ds.close()
     raw_era5_ds.close()
@@ -49,7 +50,7 @@ def main():
     # Regrid observed history to 2.5°
     gt_olr_data_2p5d = regrid_to_2p5(gt_olr_data)
     gt_u850_data_2p5d = regrid_to_2p5(gt_u850_data)
-    gt_u200_data_2p5d = regrid_to_2p5(gt_u200_data)
+    gt_u_upper_data_2p5d = regrid_to_2p5(gt_u_upper_data)
 
     start_dates = sorted(os.listdir(forecast_root_dir))
 
@@ -88,7 +89,7 @@ def main():
             period = slice(gt_start_date, gt_end_date)
             gt_olr_data_2p5d_slice = gt_olr_data_2p5d.sel(time=period)
             gt_u850_data_2p5d_slice = gt_u850_data_2p5d.sel(time=period)
-            gt_u200_data_2p5d_slice = gt_u200_data_2p5d.sel(time=period)
+            gt_u_upper_data_2p5d_slice = gt_u_upper_data_2p5d.sel(time=period)
 
             # Regrid forecast to 2.5° (regridder weights are reused across members/dates)
             if not forecast_regridder:
@@ -96,18 +97,17 @@ def main():
             forecast_ds_2p5d = forecast_regridder(forecast_ds)
 
             # Extract required variables (convert TTR to OLR by negation).
-            # NOTE: FuXi u250 forecast is stored as 'u200' and spliced onto ERA5 200 hPa history.
             forecast_olr_data_2p5d = (forecast_ds_2p5d['ttr'] * -1).to_dataset(name='olr')
             forecast_u850_data_2p5d = forecast_ds_2p5d['u850'].to_dataset(name='u850')
-            forecast_u200_data_2p5d = forecast_ds_2p5d['u250'].to_dataset(name='u200')
+            forecast_u_upper_data_2p5d = forecast_ds_2p5d[f'u{args.upper_level}'].to_dataset(name='u_upper')
 
             # Combine observed history with forecast
             combined_olr_data_2p5d = xr.concat([gt_olr_data_2p5d_slice, forecast_olr_data_2p5d], dim='time')
             combined_u850_data_2p5d = xr.concat([gt_u850_data_2p5d_slice, forecast_u850_data_2p5d], dim='time')
-            combined_u200_data_2p5d = xr.concat([gt_u200_data_2p5d_slice, forecast_u200_data_2p5d], dim='time')
+            combined_u_upper_data_2p5d = xr.concat([gt_u_upper_data_2p5d_slice, forecast_u_upper_data_2p5d], dim='time')
 
             time, RMM1, RMM2 = project_rmm(
-                combined_olr_data_2p5d, combined_u850_data_2p5d, combined_u200_data_2p5d,
+                combined_olr_data_2p5d, combined_u850_data_2p5d, combined_u_upper_data_2p5d,
                 seasonal_cycle_ds, normalization_factor_ds, EOF_ds
             )
             save_rmm_indices(time=time, RMM1=RMM1, RMM2=RMM2, filename=out_path, method_str='FuXi')

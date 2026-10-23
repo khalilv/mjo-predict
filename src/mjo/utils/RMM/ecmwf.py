@@ -45,6 +45,7 @@ def parse_args():
     parser.add_argument('--era5', required=True, help='ERA5 daily zarr with u_component_of_wind, used for history')
     parser.add_argument('--eof-dir', required=True, help='Directory with eof.nc, seasonal_cycle.nc, normalization_factor.nc (from RMM/eof.py)')
     parser.add_argument('--forecast-dir', required=True, help='ECMWF S2S root containing ttr/ and u/ subdirectories')
+    parser.add_argument('--upper-level', type=int, default=200, help='Upper-tropospheric wind level in hPa; ECMWF S2S provides u_upper (default: %(default)s)')
     parser.add_argument('--output-dir', required=True, help='Directory to write <init-date>.txt')
     parser.add_argument('--init-date', default='2017-02-01', help='Forecast initialization date (default: %(default)s)')
     parser.add_argument('--compute-ensemble-mean', action='store_true', help='First compute ttr_ensmean.nc/u_ensmean.nc from ttr.nc/u.nc')
@@ -70,7 +71,7 @@ def main():
 
     gt_olr_data = raw_olr_ds['olr'].to_dataset().load()
     gt_u850_data = raw_era5_ds['u_component_of_wind'].sel(level=850, drop=True).to_dataset(name='u850').load()
-    gt_u200_data = raw_era5_ds['u_component_of_wind'].sel(level=200, drop=True).to_dataset(name='u200').load()
+    gt_u_upper_data = raw_era5_ds['u_component_of_wind'].sel(level=args.upper_level, drop=True).to_dataset(name='u_upper').load()
 
     raw_olr_ds.close()
     raw_era5_ds.close()
@@ -78,19 +79,19 @@ def main():
     # Regrid observed history to 2.5°
     gt_olr_data_2p5d = regrid_to_2p5(gt_olr_data)
     gt_u850_data_2p5d = regrid_to_2p5(gt_u850_data)
-    gt_u200_data_2p5d = regrid_to_2p5(gt_u200_data)
+    gt_u_upper_data_2p5d = regrid_to_2p5(gt_u_upper_data)
 
     # Load ensemble-mean forecast
     ds_ttr = xr.open_dataset(os.path.join(forecast_root_dir, 'ttr', 'ttr_ensmean.nc')).rename_dims(latitude='lat', longitude='lon')
     ds_u = xr.open_dataset(os.path.join(forecast_root_dir, 'u', 'u_ensmean.nc')).rename_dims(latitude='lat', longitude='lon')
 
     ttr = ds_ttr['ttr'].sel(forecast_reference_time=init_date).to_dataset(name='ttr')
-    u200 = ds_u['u'].sel(pressure_level=200, forecast_reference_time=init_date).to_dataset(name='u200').drop_vars('pressure_level')
+    u_upper = ds_u['u'].sel(pressure_level=args.upper_level, forecast_reference_time=init_date).to_dataset(name='u_upper').drop_vars('pressure_level')
     u850 = ds_u['u'].sel(pressure_level=850, forecast_reference_time=init_date).to_dataset(name='u850').drop_vars('pressure_level')
 
     # Regrid forecast to 2.5°
     ttr_2p5d = regrid_to_2p5(ttr)
-    u200_2p5d = regrid_to_2p5(u200)
+    u_upper_2p5d = regrid_to_2p5(u_upper)
     u850_2p5d = regrid_to_2p5(u850)
 
     # Observed history: 119 days up to and including the init date
@@ -99,7 +100,7 @@ def main():
     period = slice(gt_start_date, gt_end_date)
     gt_olr_data_2p5d_slice = gt_olr_data_2p5d.sel(time=period)
     gt_u850_data_2p5d_slice = gt_u850_data_2p5d.sel(time=period)
-    gt_u200_data_2p5d_slice = gt_u200_data_2p5d.sel(time=period)
+    gt_u_upper_data_2p5d_slice = gt_u_upper_data_2p5d.sel(time=period)
 
     # Convert accumulated top thermal radiation to daily OLR
     # Day 1: use first forecast step (convert from J/m² to W/m²)
@@ -109,16 +110,16 @@ def main():
     olr_2p5d = xr.concat([olr_day1, olr_diffs], dim='forecast_period')
 
     olr_2p5d = to_absolute_time(olr_2p5d)
-    u200_2p5d = to_absolute_time(u200_2p5d)
+    u_upper_2p5d = to_absolute_time(u_upper_2p5d)
     u850_2p5d = to_absolute_time(u850_2p5d)
 
     # Combine observed history with forecast
     combined_olr_data_2p5d = xr.concat([gt_olr_data_2p5d_slice, olr_2p5d.to_dataset(name='olr')], dim='time')
     combined_u850_data_2p5d = xr.concat([gt_u850_data_2p5d_slice, u850_2p5d], dim='time')
-    combined_u200_data_2p5d = xr.concat([gt_u200_data_2p5d_slice, u200_2p5d], dim='time')
+    combined_u_upper_data_2p5d = xr.concat([gt_u_upper_data_2p5d_slice, u_upper_2p5d], dim='time')
 
     time, RMM1, RMM2 = project_rmm(
-        combined_olr_data_2p5d, combined_u850_data_2p5d, combined_u200_data_2p5d,
+        combined_olr_data_2p5d, combined_u850_data_2p5d, combined_u_upper_data_2p5d,
         seasonal_cycle_ds, normalization_factor_ds, EOF_ds
     )
     save_rmm_indices(
