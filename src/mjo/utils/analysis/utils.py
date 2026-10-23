@@ -69,6 +69,56 @@ def compute_bmse(
     return [bmsea, bmsep]
 
 
+def compute_bmsea(
+    predict_rmm1: np.ndarray,
+    ground_truth_rmm1: np.ndarray,
+    predict_rmm2: np.ndarray,
+    ground_truth_rmm2: np.ndarray
+) -> float:
+    """Compute the amplitude-error component of BMSE (mean squared amplitude difference)."""
+    predict_amplitude = np.sqrt(np.square(predict_rmm1) + np.square(predict_rmm2))
+    ground_truth_amplitude = np.sqrt(np.square(ground_truth_rmm1) + np.square(ground_truth_rmm2))
+    return float(np.mean(np.square(predict_amplitude - ground_truth_amplitude)))
+
+
+def compute_bmsep(
+    predict_rmm1: np.ndarray,
+    ground_truth_rmm1: np.ndarray,
+    predict_rmm2: np.ndarray,
+    ground_truth_rmm2: np.ndarray
+) -> float:
+    """Compute the phase-error component of BMSE."""
+    predict_amplitude = np.sqrt(np.square(predict_rmm1) + np.square(predict_rmm2))
+    ground_truth_amplitude = np.sqrt(np.square(ground_truth_rmm1) + np.square(ground_truth_rmm2))
+    predict_phase = np.arctan2(predict_rmm2, predict_rmm1)
+    ground_truth_phase = np.arctan2(ground_truth_rmm2, ground_truth_rmm1)
+    return float(np.mean(2 * predict_amplitude * ground_truth_amplitude * (1 - np.cos(predict_phase - ground_truth_phase))))
+
+
+def compute_amplitude_bias(
+    predict_rmm1: np.ndarray,
+    ground_truth_rmm1: np.ndarray,
+    predict_rmm2: np.ndarray,
+    ground_truth_rmm2: np.ndarray
+) -> float:
+    """Compute mean amplitude bias (predicted minus ground truth amplitude)."""
+    predict_amplitude = np.sqrt(np.square(predict_rmm1) + np.square(predict_rmm2))
+    ground_truth_amplitude = np.sqrt(np.square(ground_truth_rmm1) + np.square(ground_truth_rmm2))
+    return float(np.mean(predict_amplitude - ground_truth_amplitude))
+
+
+def compute_phase_bias(
+    predict_rmm1: np.ndarray,
+    ground_truth_rmm1: np.ndarray,
+    predict_rmm2: np.ndarray,
+    ground_truth_rmm2: np.ndarray
+) -> float:
+    """Compute mean phase bias (signed angle between predicted and ground truth vectors)."""
+    num = predict_rmm1 * ground_truth_rmm2 - predict_rmm2 * ground_truth_rmm1
+    den = predict_rmm1 * ground_truth_rmm1 + predict_rmm2 * ground_truth_rmm2
+    return float(np.mean(np.arctan2(num, den)))
+
+
 # =============================================================================
 # Bootstrap utils
 # =============================================================================

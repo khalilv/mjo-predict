@@ -6,7 +6,8 @@ from tqdm import tqdm
 from typing import List, Optional
 from mjo.utils.RMM.io import load_rmm_indices
 from mjo.utils.analysis.utils import (
-    load_forecast, load_config, compute_bcor,
+    load_forecast, load_config,
+    compute_amplitude_bias, compute_phase_bias,
     block_bootstrap_per_lead_significance,
 )
 from mjo.utils.plot import lead_time_bias_plot, lead_time_bias_amplitude_grid
@@ -191,8 +192,13 @@ def main():
 
     # Generate bias plot with significance coloring (no CI bands)
     if bootstrap_enabled and all_model_dfs:
-        bias_significance = block_bootstrap_per_lead_significance(
-            all_model_dfs, max_lead_times, ground_truth, compute_bcor,
+        # higher_is_better is irrelevant here: the significance test is two-sided.
+        amplitude_significance = block_bootstrap_per_lead_significance(
+            all_model_dfs, max_lead_times, ground_truth, compute_amplitude_bias,
+            higher_is_better=True, **bootstrap_kwargs
+        )
+        phase_significance = block_bootstrap_per_lead_significance(
+            all_model_dfs, max_lead_times, ground_truth, compute_phase_bias,
             higher_is_better=True, **bootstrap_kwargs
         )
         lead_time_bias_plot(
@@ -202,7 +208,8 @@ def main():
             labels=plot_labels,
             output_filename=os.path.join(output_dir, 'lead_time_bias_ci.png'),
             titles=(titles_settings.get('amplitude'), titles_settings.get('phase')),
-            significance=bias_significance,
+            amplitude_significance=amplitude_significance,
+            phase_significance=phase_significance,
             **plot_kwargs
         )
 

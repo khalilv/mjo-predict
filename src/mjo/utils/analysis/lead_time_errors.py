@@ -7,11 +7,13 @@ from typing import Callable, List, Tuple, Optional
 from mjo.utils.RMM.io import load_rmm_indices
 from mjo.utils.analysis.utils import (
     load_forecast, load_config, compute_bcor, compute_bmse,
+    compute_bmsea, compute_bmsep,
     block_bootstrap_paired_improvement,
     block_bootstrap_per_lead_significance, block_bootstrap_skillful_window,
 )
 from mjo.utils.plot import (
     lead_time_bcor_bmse_plot,
+    lead_time_bmse_decomp_plot,
     lead_time_bcor_bmse_amplitude_grid,
 )
 
@@ -269,7 +271,46 @@ def main():
             output_filename=os.path.join(output_dir, 'lead_time_bcor_bmse_ci.png'),
             titles=(titles_settings.get('bcor'), titles_settings.get('bmse')),
             combined_bmse=True,
-            significance=bcor_significance,
+            bcor_significance=bcor_significance,
+            bmse_significance=bmse_significance,
+            **plot_kwargs
+        )
+
+    # Generate decomposed BMSE figure (amplitude-error vs phase-error components)
+    decomp_titles = (
+        titles_settings.get('bmsea', '(a) BMSE - Amplitude Error Component'),
+        titles_settings.get('bmsep', '(b) BMSE - Phase Error Component'),
+    )
+
+    lead_time_bmse_decomp_plot(
+        lead_times=lead_times,
+        bmsea=amplitude_errors,
+        bmsep=phase_errors,
+        labels=plot_labels,
+        output_filename=os.path.join(output_dir, 'lead_time_bmse_decomposed.png'),
+        titles=decomp_titles,
+        **plot_kwargs
+    )
+
+    if bootstrap_enabled and all_model_dfs:
+        # Significance of each error component vs FuXi baseline (lower error is better)
+        bmsea_significance = block_bootstrap_per_lead_significance(
+            all_model_dfs, max_lead_times, ground_truth, compute_bmsea,
+            higher_is_better=False, **bootstrap_kwargs
+        )
+        bmsep_significance = block_bootstrap_per_lead_significance(
+            all_model_dfs, max_lead_times, ground_truth, compute_bmsep,
+            higher_is_better=False, **bootstrap_kwargs
+        )
+        lead_time_bmse_decomp_plot(
+            lead_times=lead_times,
+            bmsea=amplitude_errors,
+            bmsep=phase_errors,
+            labels=plot_labels,
+            output_filename=os.path.join(output_dir, 'lead_time_bmse_decomposed_ci.png'),
+            titles=decomp_titles,
+            amplitude_significance=bmsea_significance,
+            phase_significance=bmsep_significance,
             **plot_kwargs
         )
 
@@ -299,14 +340,26 @@ def main():
 
         # Amplitude grid with significance coloring
         if bootstrap_enabled and all_model_dfs:
-            low_amp_sig = block_bootstrap_per_lead_significance(
+            # Low-amplitude regime uses filter_type='high' (exclude high-amp inits);
+            # high-amplitude regime uses filter_type='low' (exclude low-amp inits).
+            low_amp_bcor_sig = block_bootstrap_per_lead_significance(
                 all_model_dfs, max_lead_times, ground_truth, compute_bcor,
                 higher_is_better=True, fuxi_ds=fuxi_ds, filter_type='high',
                 **bootstrap_kwargs
             )
-            high_amp_sig = block_bootstrap_per_lead_significance(
+            low_amp_bmse_sig = block_bootstrap_per_lead_significance(
+                all_model_dfs, max_lead_times, ground_truth, compute_bmse,
+                higher_is_better=False, fuxi_ds=fuxi_ds, filter_type='high',
+                **bootstrap_kwargs
+            )
+            high_amp_bcor_sig = block_bootstrap_per_lead_significance(
                 all_model_dfs, max_lead_times, ground_truth, compute_bcor,
                 higher_is_better=True, fuxi_ds=fuxi_ds, filter_type='low',
+                **bootstrap_kwargs
+            )
+            high_amp_bmse_sig = block_bootstrap_per_lead_significance(
+                all_model_dfs, max_lead_times, ground_truth, compute_bmse,
+                higher_is_better=False, fuxi_ds=fuxi_ds, filter_type='low',
                 **bootstrap_kwargs
             )
             lead_time_bcor_bmse_amplitude_grid(
@@ -321,8 +374,10 @@ def main():
                 output_filename=os.path.join(output_dir, 'lead_time_bcor_bmse_amplitude_grid_ci.png'),
                 titles=amp_grid_titles,
                 combined_bmse=True,
-                low_amp_significance=low_amp_sig,
-                high_amp_significance=high_amp_sig,
+                low_amp_bcor_significance=low_amp_bcor_sig,
+                low_amp_bmse_significance=low_amp_bmse_sig,
+                high_amp_bcor_significance=high_amp_bcor_sig,
+                high_amp_bmse_significance=high_amp_bmse_sig,
                 **plot_kwargs
             )
 

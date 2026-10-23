@@ -634,7 +634,8 @@ def lead_time_bcor_bmse_plot(
     bcor_ci_upper: Optional[Sequence[np.ndarray]] = None,
     bmse_ci_lower: Optional[Sequence[np.ndarray]] = None,
     bmse_ci_upper: Optional[Sequence[np.ndarray]] = None,
-    significance: Optional[List[np.ndarray]] = None,
+    bcor_significance: Optional[List[np.ndarray]] = None,
+    bmse_significance: Optional[List[np.ndarray]] = None,
     **plot_kwargs
 ) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
     """Create side-by-side BCOR and BMSE plots.
@@ -653,7 +654,8 @@ def lead_time_bcor_bmse_plot(
         bcor_ci_upper: Upper CI bounds for BCOR per model
         bmse_ci_lower: Lower CI bounds for combined BMSE per model
         bmse_ci_upper: Upper CI bounds for combined BMSE per model
-        significance: List of boolean arrays per model (excluding baseline) for color coding
+        bcor_significance: List of boolean arrays per model (excluding baseline) for BCOR color coding
+        bmse_significance: List of boolean arrays per model (excluding baseline) for BMSE color coding
         **plot_kwargs: Additional kwargs passed to lead_time_skill_subplot
 
     Returns:
@@ -677,7 +679,7 @@ def lead_time_bcor_bmse_plot(
         title=titles[0],
         ci_lower=bcor_ci_lower,
         ci_upper=bcor_ci_upper,
-        significance=significance,
+        significance=bcor_significance,
         **plot_kwargs
     )
 
@@ -694,7 +696,82 @@ def lead_time_bcor_bmse_plot(
         combined=combined_bmse,
         ci_lower=bmse_ci_lower,
         ci_upper=bmse_ci_upper,
-        significance=significance,
+        significance=bmse_significance,
+        **plot_kwargs
+    )
+
+    plt.tight_layout()
+
+    if output_filename:
+        plt.savefig(output_filename, dpi=600, bbox_inches='tight')
+        plt.close()
+
+    return fig, (ax1, ax2)
+
+
+def lead_time_bmse_decomp_plot(
+    lead_times: Sequence[np.ndarray],
+    bmsea: Sequence[np.ndarray],
+    bmsep: Sequence[np.ndarray],
+    labels: Sequence[str],
+    output_filename: Optional[str] = None,
+    *,
+    titles: Optional[Tuple[Optional[str], Optional[str]]] = (None, None),
+    figsize: Tuple[float, float] = (16, 5),
+    ylim_amplitude: Optional[Tuple[float, float]] = None,
+    ylim_phase: Optional[Tuple[float, float]] = None,
+    amplitude_significance: Optional[List[np.ndarray]] = None,
+    phase_significance: Optional[List[np.ndarray]] = None,
+    **plot_kwargs
+) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
+    """Side-by-side plot of the BMSE amplitude-error (BMSEa) and phase-error (BMSEp) components.
+
+    Unlike lead_time_bcor_bmse_plot (which shows combined BMSE), this decomposes
+    BMSE into its two error components, each on its own panel with its own
+    per-lead significance coloring.
+
+    Args:
+        lead_times: Lead time arrays for each model
+        bmsea: BMSE amplitude-error component arrays per model
+        bmsep: BMSE phase-error component arrays per model
+        labels: Model labels
+        output_filename: Path to save figure
+        titles: Tuple of (bmsea_title, bmsep_title)
+        ylim_amplitude / ylim_phase: Optional y-limits per panel
+        amplitude_significance: Boolean arrays per model for BMSEa color coding
+        phase_significance: Boolean arrays per model for BMSEp color coding
+        **plot_kwargs: Additional kwargs passed to lead_time_skill_subplot
+
+    Returns:
+        Figure and tuple of (bmsea_ax, bmsep_ax)
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+    # Amplitude-error component (BMSEa)
+    lead_time_skill_subplot(
+        lead_times=lead_times,
+        metric_data=bmsea,
+        labels=labels,
+        metric_type='bmse',
+        ax=ax1,
+        title=titles[0],
+        combined=True,
+        ylim=ylim_amplitude,
+        significance=amplitude_significance,
+        **plot_kwargs
+    )
+
+    # Phase-error component (BMSEp)
+    lead_time_skill_subplot(
+        lead_times=lead_times,
+        metric_data=bmsep,
+        labels=labels,
+        metric_type='bmse',
+        ax=ax2,
+        title=titles[1],
+        combined=True,
+        ylim=ylim_phase,
+        significance=phase_significance,
         **plot_kwargs
     )
 
@@ -720,7 +797,8 @@ def lead_time_bias_plot(
     amplitude_ci_upper: Optional[Sequence[np.ndarray]] = None,
     phase_ci_lower: Optional[Sequence[np.ndarray]] = None,
     phase_ci_upper: Optional[Sequence[np.ndarray]] = None,
-    significance: Optional[List[np.ndarray]] = None,
+    amplitude_significance: Optional[List[np.ndarray]] = None,
+    phase_significance: Optional[List[np.ndarray]] = None,
     **plot_kwargs
 ) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
     """Create side-by-side amplitude and phase bias plots.
@@ -737,7 +815,8 @@ def lead_time_bias_plot(
         amplitude_ci_upper: Upper CI bounds for amplitude bias per model
         phase_ci_lower: Lower CI bounds for phase bias per model
         phase_ci_upper: Upper CI bounds for phase bias per model
-        significance: List of boolean arrays per model for color coding
+        amplitude_significance: List of boolean arrays per model for amplitude-bias color coding
+        phase_significance: List of boolean arrays per model for phase-bias color coding
         **plot_kwargs: Additional kwargs passed to lead_time_bias_subplot
                        (can include ylim_amplitude and ylim_phase for separate y-limits)
 
@@ -772,7 +851,7 @@ def lead_time_bias_plot(
         linewidth=linewidth,
         ci_lower=amplitude_ci_lower,
         ci_upper=amplitude_ci_upper,
-        significance=significance,
+        significance=amplitude_significance,
         **plot_kwargs
     )
 
@@ -791,7 +870,7 @@ def lead_time_bias_plot(
         linewidth=linewidth,
         ci_lower=phase_ci_lower,
         ci_upper=phase_ci_upper,
-        significance=significance,
+        significance=phase_significance,
         **plot_kwargs
     )
 
@@ -1100,8 +1179,10 @@ def lead_time_bcor_bmse_amplitude_grid(
     titles: Optional[Tuple[Optional[str], ...]] = (None, None, None, None),
     combined_bmse: bool = True,
     figsize: Tuple[float, float] = (16, 10),
-    low_amp_significance: Optional[List[np.ndarray]] = None,
-    high_amp_significance: Optional[List[np.ndarray]] = None,
+    low_amp_bcor_significance: Optional[List[np.ndarray]] = None,
+    low_amp_bmse_significance: Optional[List[np.ndarray]] = None,
+    high_amp_bcor_significance: Optional[List[np.ndarray]] = None,
+    high_amp_bmse_significance: Optional[List[np.ndarray]] = None,
     **plot_kwargs
 ) -> Tuple[plt.Figure, np.ndarray]:
     """Create 2x2 grid of amplitude-filtered BCOR and BMSE plots.
@@ -1146,7 +1227,7 @@ def lead_time_bcor_bmse_amplitude_grid(
         metric_type='bcor',
         ax=axes[0, 0],
         title=titles[0],
-        significance=low_amp_significance,
+        significance=low_amp_bcor_significance,
         **plot_kwargs
     )
     lead_time_skill_subplot(
@@ -1159,7 +1240,7 @@ def lead_time_bcor_bmse_amplitude_grid(
         bmsea=low_amp_bmsea if not combined_bmse else None,
         bmsep=low_amp_bmsep if not combined_bmse else None,
         combined=combined_bmse,
-        significance=low_amp_significance,
+        significance=low_amp_bmse_significance,
         **plot_kwargs
     )
 
@@ -1171,7 +1252,7 @@ def lead_time_bcor_bmse_amplitude_grid(
         metric_type='bcor',
         ax=axes[1, 0],
         title=titles[2],
-        significance=high_amp_significance,
+        significance=high_amp_bcor_significance,
         **plot_kwargs
     )
     lead_time_skill_subplot(
@@ -1184,7 +1265,7 @@ def lead_time_bcor_bmse_amplitude_grid(
         bmsea=high_amp_bmsea if not combined_bmse else None,
         bmsep=high_amp_bmsep if not combined_bmse else None,
         combined=combined_bmse,
-        significance=high_amp_significance,
+        significance=high_amp_bmse_significance,
         **plot_kwargs
     )
 
